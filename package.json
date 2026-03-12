@@ -1,0 +1,19 @@
+{
+  "name": "statusowl",
+  "version": "0.1.0",
+  "description": "Open-source service health monitor and public status page",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["status-page", "monitoring", "uptime", "health-check"],
+  "author": "Matt Rogers",
+  "license": "MIT"
+}
