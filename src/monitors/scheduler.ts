@@ -7,6 +7,7 @@
 import { createChildLogger } from '../core/index.js';
 import { listServices, updateServiceStatus, recordCheck } from '../storage/index.js';
 import { checkService } from './checker.js';
+import { detectIncidents } from '../incidents/detector.js';
 import type { Service } from '../core/index.js';
 
 const log = createChildLogger('Scheduler');
@@ -81,6 +82,9 @@ async function runCheck(service: Service): Promise<void> {
 
     // Update service status if changed
     updateServiceStatus(service.id, result.status);
+
+    // Run incident detection after each check
+    detectIncidents();
 
     log.debug({
       id: service.id,

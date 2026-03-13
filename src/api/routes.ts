@@ -133,7 +133,18 @@ router.get('/api/status', (_req, res) => {
 router.get('/api/incidents', (_req, res) => {
   const result = getOpenIncidents();
   if (!result.ok) return res.status(500).json(result);
-  res.json(result);
+
+  // Attach timeline to each incident so the status page can render them
+  const db = getDb();
+  const getTimeline = db.prepare(
+    'SELECT id, incident_id AS "incidentId", status, message, created_at AS "createdAt" FROM incident_updates WHERE incident_id = ? ORDER BY created_at ASC'
+  );
+  const incidents = result.data.map((incident: Record<string, unknown>) => ({
+    ...incident,
+    timeline: getTimeline.all(incident.id as string),
+  }));
+
+  res.json({ ok: true, data: incidents });
 });
 
 router.get('/api/incidents/:id', (req, res) => {
