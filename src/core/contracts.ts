@@ -58,7 +58,7 @@ export const ServiceSchema = z.object({
   name: z.string().min(1).max(200),
   url: z.string().url(),
   method: z.enum(['GET', 'HEAD', 'POST']).default('GET'),
-  checkType: z.enum(['http', 'tcp', 'dns']).default('http'),
+  checkType: z.enum(['http', 'tcp', 'dns', 'composite']).default('http'),
   expectedStatus: z.coerce.number().default(200),
   checkInterval: z.coerce.number().min(10).max(3600).default(60), // seconds
   timeout: z.coerce.number().min(1).max(60).default(10),           // seconds
@@ -228,6 +228,7 @@ export const AuditActionSchema = z.enum([
   'maintenance.create', 'maintenance.delete',
   'alert_policy.create', 'alert_policy.update', 'alert_policy.delete',
   'auth.register', 'auth.grant', 'auth.revoke',
+  'config.update',
 ]);
 export type AuditAction = z.infer<typeof AuditActionSchema>;
 
@@ -287,6 +288,22 @@ export const CreateSlaTargetSchema = SlaTargetSchema.omit({
   updatedAt: true,
 });
 export type CreateSlaTarget = z.infer<typeof CreateSlaTargetSchema>;
+
+// ── Tag ──
+
+export const TagSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(100),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  createdAt: z.string().datetime().optional(),
+});
+export type Tag = z.infer<typeof TagSchema>;
+
+export const ServiceTagSchema = z.object({
+  serviceId: z.string().uuid(),
+  tagId: z.string().uuid(),
+});
+export type ServiceTag = z.infer<typeof ServiceTagSchema>;
 
 // ── Health Score ──
 

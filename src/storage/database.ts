@@ -360,6 +360,60 @@ function runMigrations(db: Database.Database): void {
         CREATE UNIQUE INDEX IF NOT EXISTS idx_sla_targets_service ON sla_targets(service_id);
       `,
     },
+    {
+      version: 14,
+      sql: `
+        -- Maintenance notification tracking (prevents duplicate sends)
+        CREATE TABLE IF NOT EXISTS maintenance_notifications (
+          id TEXT PRIMARY KEY,
+          maintenance_window_id TEXT NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,
+          notification_type TEXT NOT NULL CHECK (notification_type IN ('upcoming', 'started', 'ended')),
+          sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(maintenance_window_id, notification_type)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_maint_notif_window ON maintenance_notifications(maintenance_window_id);
+      `,
+    },
+    {
+      version: 15,
+      sql: `
+        -- Service tags / labels
+        CREATE TABLE IF NOT EXISTS tags (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          color TEXT NOT NULL DEFAULT '#3b82f6',
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- Junction table: service <-> tag (many-to-many)
+        CREATE TABLE IF NOT EXISTS service_tags (
+          service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+          tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+          PRIMARY KEY (service_id, tag_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_service_tags_tag ON service_tags(tag_id);
+      `,
+    },
+    {
+      version: 16,
+      sql: `
+        -- Composite service children with derivation rules
+        CREATE TABLE IF NOT EXISTS composite_children (
+          composite_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+          child_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+          weight REAL NOT NULL DEFAULT 1.0,
+          derivation_rule TEXT NOT NULL DEFAULT 'worst-case'
+            CHECK (derivation_rule IN ('worst-case', 'majority', 'weighted')),
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (composite_id, child_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_composite_children_composite ON composite_children(composite_id);
+        CREATE INDEX IF NOT EXISTS idx_composite_children_child ON composite_children(child_id);
+      `,
+    },
   ];
 
   const applyMigration = db.transaction((m: { version: number; sql: string }) => {

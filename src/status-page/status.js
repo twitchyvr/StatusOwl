@@ -1062,13 +1062,23 @@
 
   var API_CALENDAR_URL = '/api/calendar';
 
-  var CALENDAR_COLORS = {
-    4: '#2d6a4f',
-    3: '#52b788',
-    2: '#b7e4c7',
-    1: '#fca311',
-    0: '#e63946',
-  };
+  /**
+   * Calendar heat-map colors — reads from CSS custom properties so they
+   * automatically switch between light and dark theme.
+   */
+  function getCalendarColors() {
+    var style = getComputedStyle(document.documentElement);
+    return {
+      4: style.getPropertyValue('--color-calendar-level-4').trim() || '#2d6a4f',
+      3: style.getPropertyValue('--color-calendar-level-3').trim() || '#52b788',
+      2: style.getPropertyValue('--color-calendar-level-2').trim() || '#b7e4c7',
+      1: style.getPropertyValue('--color-calendar-level-1').trim() || '#fca311',
+      0: style.getPropertyValue('--color-calendar-level-0').trim() || '#e63946',
+    };
+  }
+
+  // Lazy-initialized; refreshed each time the calendar renders
+  var CALENDAR_COLORS = null;
 
   var CALENDAR_CELL_SIZE = 12;
   var CALENDAR_GAP = 2;
@@ -1109,6 +1119,9 @@
    *   - Month labels on top
    */
   function renderCalendar(containerId, calendarData) {
+    // Refresh calendar colors from CSS custom properties (theme-aware)
+    CALENDAR_COLORS = getCalendarColors();
+
     var container = document.getElementById(containerId);
     if (!container) return;
 
