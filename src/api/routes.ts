@@ -5,11 +5,15 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { CreateServiceSchema, CreateServiceGroupSchema, CreateMaintenanceWindowSchema, CreateAlertPolicySchema, CreateSlaTargetSchema, getConfig } from '../core/index.js';
+import { CreateServiceSchema, CreateServiceGroupSchema, CreateMaintenanceWindowSchema, CreateAlertPolicySchema, CreateSlaTargetSchema, WebhookSchema, getConfig } from '../core/index.js';
 import { ok, err } from '../core/index.js';
 import type { ServiceStatus } from '../core/index.js';
 import { createService, getService, listServices, listServicesPaginated, updateService, deleteService } from '../storage/index.js';
 import { generateBadgeSvg, getStatusText } from './badges.js';
+import { createTag, getTag, listTags, deleteTag, addTagToService, removeTagFromService, getTagsForService, getServicesByTag } from '../storage/tag-repo.js';
+import { createCompositeService, addChild, removeChild, getChildren, computeStatus } from '../monitors/composite-service.js';
+import { createWebhook, listWebhooks, getWebhookById, deleteWebhook } from '../notifications/webhook-repo.js';
+import { cacheMiddleware, getCacheStats, invalidateCache } from './cache-middleware.js';
 import { generateWidgetHtml } from './embed-widget.js';
 import { getRecentChecks, getUptimeSummary, getDailyHistory, getLatestSslCheck, getSslHistory } from '../storage/index.js';
 import { getPercentiles } from '../monitors/percentile-aggregator.js';
@@ -45,7 +49,6 @@ import { createSubscription, confirmSubscription, unsubscribe, listSubscriptions
 import { generateReport, getReport, listReports } from '../reports/index.js';
 import { createRegion, listRegions, getRegion, deleteRegion, getRegionalLatency } from '../monitors/region-repo.js';
 import { getDeliveryHistory, retryDelivery } from '../notifications/webhook-delivery.js';
-import { getWebhookById } from '../notifications/webhook-repo.js';
 import { getCalendarData, getOverallCalendarData } from './calendar.js';
 import { getEventBus } from './event-stream.js';
 import {
@@ -1105,4 +1108,184 @@ router.post('/api/webhooks/:id/deliveries/:deliveryId/retry', requireAuth, (req:
     return res.status(status).json(result);
   }
   res.json(result);
+});
+
+// ── Webhooks (CRUD) ──
+
+router.get('/api/webhooks', requireAuth, (_req, res) => {
+  const result = listWebhooks();
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.get('/api/webhooks/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const result = getWebhookById(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+router.post('/api/webhooks', requireAuth, (req: Request, res: Response) => {
+  const CreateWebhookSchema = WebhookSchema.omit({ id: true, createdAt: true });
+  const parsed = CreateWebhookSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: parsed.error.message } });
+  }
+
+  const result = createWebhook(parsed.data.url, parsed.data.events, parsed.data.secret);
+  if (!result.ok) return res.status(500).json(result);
+  res.status(201).json(result);
+});
+
+router.delete('/api/webhooks/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const result = deleteWebhook(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+// ── Tags ──
+
+router.get('/api/tags', (_req, res) => {
+  const result = listTags();
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.post('/api/tags', requireAuth, (req: Request, res: Response) => {
+  const { name, color } = req.body;
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'name is required' } });
+  }
+  if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'color must be a hex color (e.g. #ff0000)' } });
+  }
+
+  const result = createTag(name.trim(), color);
+  if (!result.ok) {
+    const status = result.error.code === 'DUPLICATE' ? 409 : 500;
+    return res.status(status).json(result);
+  }
+  res.status(201).json(result);
+});
+
+router.delete('/api/tags/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const result = deleteTag(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json({ ok: true, data: { deleted: true } });
+});
+
+router.get('/api/services/:id/tags', (req, res) => {
+  const result = getTagsForService(req.params.id);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.post('/api/services/:id/tags', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const { tagId } = req.body;
+  if (!tagId) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'tagId is required' } });
+  }
+  const result = addTagToService(req.params.id, tagId);
+  if (!result.ok) {
+    const status = result.error.code === 'DUPLICATE' ? 409
+      : result.error.code === 'NOT_FOUND' ? 404
+      : 500;
+    return res.status(status).json(result);
+  }
+  res.status(201).json(result);
+});
+
+router.delete('/api/services/:id/tags/:tagId', requireAuth, (req: Request<{id: string; tagId: string}>, res: Response) => {
+  const result = removeTagFromService(req.params.id, req.params.tagId);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json({ ok: true, data: { removed: true } });
+});
+
+// Tag-based service filtering
+router.get('/api/tags/filter', (req, res) => {
+  const tagIds = (req.query.tagIds as string || '').split(',').filter(Boolean);
+  const mode = (req.query.mode as string) === 'and' ? 'and' as const : 'or' as const;
+
+  if (tagIds.length === 0) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'tagIds query parameter is required' } });
+  }
+
+  const result = getServicesByTag(tagIds, mode);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+// ── Composite Services ──
+
+router.post('/api/composite-services', requireAuth, (req: Request, res: Response) => {
+  const { name, childIds, derivationRule } = req.body;
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'name is required' } });
+  }
+
+  const result = createCompositeService(name.trim(), childIds || [], derivationRule || 'worst-case');
+  if (!result.ok) {
+    const status = result.error.code === 'VALIDATION' || result.error.code === 'NOT_FOUND' ? 400 : 500;
+    return res.status(status).json(result);
+  }
+  recordAudit('service.create', 'service', result.data.id, { detail: `Composite: ${result.data.name}` });
+  res.status(201).json(result);
+});
+
+router.get('/api/composite-services/:id/children', (req, res) => {
+  const result = getChildren(req.params.id);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.post('/api/composite-services/:id/children', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const { childId, weight } = req.body;
+  if (!childId) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'childId is required' } });
+  }
+
+  const result = addChild(req.params.id, childId, weight);
+  if (!result.ok) {
+    const status = result.error.code === 'VALIDATION' || result.error.code === 'DUPLICATE' ? 400
+      : result.error.code === 'NOT_FOUND' ? 404
+      : 500;
+    return res.status(status).json(result);
+  }
+  res.status(201).json(result);
+});
+
+router.delete('/api/composite-services/:id/children/:childId', requireAuth, (req: Request<{id: string; childId: string}>, res: Response) => {
+  const result = removeChild(req.params.id, req.params.childId);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+router.post('/api/composite-services/:id/compute', (req, res) => {
+  const result = computeStatus(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json({ ok: true, data: { status: result.data } });
+});
+
+// ── Cache Stats ──
+
+router.get('/api/cache/stats', requireAuth, (_req, res) => {
+  const stats = getCacheStats();
+  res.json({ ok: true, data: stats });
 });
