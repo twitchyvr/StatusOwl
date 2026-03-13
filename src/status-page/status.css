@@ -82,6 +82,26 @@
   --color-severity-critical-text: #fecaca;
 }
 
+/* Skip Navigation Link */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 0;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: var(--spacing-sm) var(--spacing-md);
+  z-index: 100;
+  border: 2px solid var(--color-focus);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: var(--spacing-sm);
+  left: var(--spacing-sm);
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
