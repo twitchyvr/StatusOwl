@@ -36,7 +36,7 @@ export function getRecentChecks(serviceId: string, limit = 50): Result<CheckResu
     const rows = db.prepare(`
       SELECT * FROM check_results
       WHERE service_id = ?
-      ORDER BY checked_at DESC
+      ORDER BY checked_at DESC, ROWID DESC
       LIMIT ?
     `).all(serviceId, limit) as Record<string, unknown>[];
 

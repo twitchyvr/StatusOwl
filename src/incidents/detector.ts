@@ -92,7 +92,7 @@ function processServiceChecks(
     const recentChecks = db.prepare(`
       SELECT * FROM check_results
       WHERE service_id = ?
-      ORDER BY checked_at DESC
+      ORDER BY checked_at DESC, ROWID DESC
       LIMIT ?
     `).all(serviceId, CONSECUTIVE_FAILURE_THRESHOLD + 5) as Record<string, unknown>[];
 

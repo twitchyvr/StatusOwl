@@ -30,7 +30,7 @@ export function createService(input: CreateService): Result<Service> {
       input.timeout ?? 10,
       input.headers ? JSON.stringify(input.headers) : null,
       input.body ?? null,
-      input.enabled ? 1 : 0,
+      (input.enabled ?? true) ? 1 : 0,
       input.groupId ?? null,
       input.sortOrder ?? 0,
       now,
