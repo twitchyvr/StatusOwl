@@ -27,6 +27,12 @@ StatusOwl monitors HTTP endpoints, tracks incidents, displays uptime history, an
 - **Incident Subscriptions** — Email subscription system with confirmation tokens, per-service or global
 - **Scheduled Reports** — Daily/weekly uptime report generation with background scheduler
 - **Multi-Region Monitoring** — Region-based health checks with regional latency tracking
+- **Webhook Retry + Dead Letter Queue** — Exponential backoff retry with jitter, automatic DLQ for permanently failed deliveries
+- **Assertions DSL** — Multi-condition health check assertions: status_code, response_time, header/body checks with severity levels
+- **Status Badges** — Shields.io-style SVG badges and embeddable HTML widget with auto-refresh
+- **Health Score + SLA Tracking** — Weighted health score calculation, per-service SLA targets with compliance monitoring
+- **Uptime History Calendar** — GitHub-style contribution calendar showing daily uptime levels
+- **SSE Event Stream** — Server-Sent Events for real-time status page updates with event replay
 - **Paginated API** — Cursor-based pagination with filtering on `/api/v2/` endpoints
 - **RESTful API** — Full CRUD for services, groups, incidents, maintenance windows, alert policies, and auth
 - **Graceful Shutdown** — Proper signal handling, scheduler cleanup, database close
@@ -56,8 +62,9 @@ src/
   audit/           # Audit log repository, query and purge operations
   subscriptions/   # Incident subscription repo, confirm/unsubscribe token flow
   reports/         # Uptime report generator, daily/weekly scheduler
-  notifications/   # Webhook repo, Slack/Discord/Email formatters, event dispatcher
-  api/             # Express REST routes with rate limiting, auth, pagination
+  notifications/   # Webhook repo + delivery retry/DLQ, Slack/Discord/Email formatters, event dispatcher
+  sla/             # SLA targets, health score calculation, compliance monitoring
+  api/             # Express REST routes, badges, calendar, SSE event stream, embed widget
   status-page/     # Public HTML/CSS/JS status page
   server.ts        # Entry point
 ```
@@ -155,6 +162,26 @@ curl -X POST http://localhost:3000/api/services \
 | GET | `/api/reports` | List generated reports |
 | GET | `/api/reports/:id` | Get a specific report |
 | POST | `/api/reports/generate` | Generate a report on demand |
+| **Webhook Deliveries** | | |
+| GET | `/api/webhooks/:id/deliveries` | Delivery history for a webhook |
+| GET | `/api/webhooks/:id/dead-letters` | Dead letter queue entries |
+| POST | `/api/webhook-deliveries/:id/retry` | Retry a dead-lettered delivery |
+| **Badges & Embeds** | | |
+| GET | `/api/badges/:id` | SVG status badge for a service |
+| GET | `/api/badges/:id/embed` | Embeddable HTML status widget |
+| **Calendar** | | |
+| GET | `/api/calendar/:id` | Uptime calendar data (JSON) |
+| GET | `/api/calendar/:id/svg` | Uptime calendar (SVG) |
+| **SLA** | | |
+| GET | `/api/sla-targets` | List all SLA targets |
+| POST | `/api/sla-targets` | Create an SLA target |
+| GET | `/api/sla-targets/:id` | Get SLA target by ID |
+| PATCH | `/api/sla-targets/:id` | Update an SLA target |
+| DELETE | `/api/sla-targets/:id` | Delete an SLA target |
+| GET | `/api/services/:id/health-score` | Calculate health score |
+| GET | `/api/services/:id/sla-compliance` | SLA compliance report |
+| **Events** | | |
+| GET | `/api/events/stream` | SSE event stream (real-time) |
 | **Paginated (v2)** | | |
 | GET | `/api/v2/services` | Paginated services with filtering |
 | GET | `/api/v2/incidents` | Paginated incidents with filtering |

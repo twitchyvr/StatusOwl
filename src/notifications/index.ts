@@ -33,3 +33,21 @@ export {
   formatEmailHtml,
   formatEmailText,
 } from './email.js';
+
+export {
+  recordDelivery,
+  markDeliverySuccess,
+  markDeliveryFailed,
+  moveToDeadLetter,
+  getDeliveryHistory,
+  getPendingRetries,
+  retryDelivery,
+  getDeadLetters,
+  calculateNextRetry,
+} from './webhook-delivery.js';
+
+export type {
+  DeliveryStatus,
+  WebhookDelivery,
+  WebhookDeadLetter,
+} from './webhook-delivery.js';

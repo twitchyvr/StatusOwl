@@ -976,6 +976,122 @@ button:focus-visible {
   flex-shrink: 0;
 }
 
+/* ── Calendar Section ── */
+
+.calendar-section {
+  background-color: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+  box-shadow: 0 1px 3px var(--color-shadow);
+}
+
+.calendar-section h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: var(--spacing-md);
+  color: var(--color-text-primary);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--spacing-sm);
+}
+
+/* Calendar grid wrapper — horizontal scroll on small screens */
+.calendar-grid {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-bottom: var(--spacing-sm);
+  -webkit-overflow-scrolling: touch;
+}
+
+.calendar-grid svg {
+  display: block;
+}
+
+/* Calendar cells */
+.calendar-cell {
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+  stroke: var(--color-surface);
+  stroke-width: 1;
+}
+
+.calendar-cell:hover {
+  opacity: 0.75;
+  stroke: var(--color-text-primary);
+  stroke-width: 1.5;
+}
+
+/* Day labels (Mon, Wed, Fri) inside the SVG */
+.calendar-day-label {
+  font-size: 9px;
+  fill: var(--color-text-secondary);
+  font-family: var(--font-family);
+}
+
+/* Month labels at the top of the SVG */
+.calendar-month-label {
+  font-size: 9px;
+  fill: var(--color-text-secondary);
+  font-family: var(--font-family);
+}
+
+/* Tooltip floats above the hovered cell */
+.calendar-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background-color: var(--color-text-primary);
+  color: var(--color-background);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  z-index: 20;
+  transform: translate(-50%, -100%);
+  box-shadow: 0 2px 8px var(--color-shadow);
+}
+
+.calendar-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: var(--color-text-primary);
+}
+
+/* Empty state */
+.calendar-empty {
+  text-align: center;
+  padding: var(--spacing-lg);
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+/* Legend bar */
+.calendar-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: var(--spacing-sm);
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+}
+
+.calendar-legend-label {
+  padding: 0 2px;
+}
+
+.calendar-legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
 /* Responsive Design */
 @media (max-width: 600px) {
   .container {
@@ -1031,4 +1147,46 @@ button:focus-visible {
     width: 100px;
     height: 24px;
   }
+
+  /* Calendar: stack vertically on mobile */
+  .calendar-grid {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+
+  .calendar-section {
+    padding: var(--spacing-md);
+  }
+
+  .calendar-legend {
+    justify-content: center;
+  }
+}
+
+/* ── SSE Connection Indicator ── */
+
+.sse-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background-color var(--transition-normal);
+}
+
+.sse-indicator.connected {
+  background-color: #4c1;
+}
+
+.sse-indicator.disconnected {
+  background-color: #e05d44;
+}
+
+.sse-status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  cursor: default;
 }

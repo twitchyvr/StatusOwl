@@ -4,6 +4,20 @@ All notable changes to StatusOwl are documented here. This project follows [Sema
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-03-13
+
+### Added
+- **Webhook Retry + Dead Letter Queue** — Exponential backoff retry (1s/2s/4s/8s/16s ±25% jitter), max 5 attempts, automatic DLQ for permanently failed deliveries, manual retry from DLQ (#67)
+- **Assertions DSL** — Multi-condition health check assertions: status_code, response_time, header_exists, header_equals, body_contains, body_not_contains, body_json_path, body_regex — with configurable severity levels (critical/warning/info) (#68)
+- **Status Badges** — Shields.io-style SVG badges for service status, embeddable HTML widget with auto-refresh (#69)
+- **Health Score + SLA Tracking** — Weighted health score calculation (uptime 40%, response time 30%, consistency 20%, recent trend 10%), per-service SLA targets with compliance monitoring (#70)
+- **Uptime History Calendar** — GitHub-style contribution calendar showing daily uptime levels (down/degraded/partial/good/great), SVG grid rendering (#71)
+- **SSE Event Stream** — Server-Sent Events for real-time status updates, EventBus singleton with subscribe/unsubscribe, keepalive, event replay via Last-Event-ID (#72)
+- API routes: `/api/badges/:id`, `/api/badges/:id/embed`, `/api/calendar/:id`, `/api/calendar/:id/svg`, `/api/sla-targets`, `/api/sla-targets/:id`, `/api/services/:id/health-score`, `/api/services/:id/sla-compliance`, `/api/events/stream`, `/api/webhooks/:id/deliveries`, `/api/webhooks/:id/dead-letters`, `/api/webhook-deliveries/:id/retry`
+- Database migrations #11 (webhook_deliveries + webhook_dead_letters tables), #12 (assertions column on services), #13 (sla_targets table)
+- Status page: live SSE indicator, uptime calendar section
+- 606 tests across 34 modules (174 new tests)
+
 ## [0.5.0] — 2026-03-13
 
 ### Added

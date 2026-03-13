@@ -47,6 +47,10 @@
           <span class="refresh-timer-dot"></span>
           <span class="refresh-timer-text">Refreshing in 60s</span>
         </div>
+        <div class="sse-status" aria-live="polite">
+          <span class="sse-indicator disconnected" id="sse-indicator" title="Live updates disconnected"></span>
+          <span>Live</span>
+        </div>
       </div>
     </header>
 
@@ -70,6 +74,14 @@
       <div class="services-list" id="services-list">
         <!-- Services will be rendered here -->
         <div class="loading">Loading services...</div>
+      </div>
+    </section>
+
+    <!-- Uptime Calendar -->
+    <section class="calendar-section" id="calendar-section" aria-label="Uptime history calendar">
+      <h2>Uptime History</h2>
+      <div id="uptime-calendar">
+        <!-- Calendar will be rendered here -->
       </div>
     </section>
 
