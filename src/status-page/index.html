@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StatusOwl 🦉</title>
+  <link rel="stylesheet" href="status.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1 class="logo">StatusOwl 🦉</h1>
+    </header>
+
+    <!-- Overall Status Banner -->
+    <section class="status-banner" id="overall-status">
+      <div class="status-indicator">
+        <span class="status-dot" id="overall-dot"></span>
+        <span class="status-text" id="overall-text">Loading...</span>
+      </div>
+    </section>
+
+    <!-- Services List -->
+    <section class="services-section">
+      <h2>System Status</h2>
+      <div class="services-list" id="services-list">
+        <!-- Services will be rendered here -->
+        <div class="loading">Loading services...</div>
+      </div>
+    </section>
+
+    <!-- Open Incidents -->
+    <section class="incidents-section" id="incidents-section" style="display: none;">
+      <h2>Open Incidents</h2>
+      <div class="incidents-list" id="incidents-list">
+        <!-- Incidents will be rendered here -->
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>Powered by <a href="https://statusowl.com">StatusOwl</a></p>
+    </footer>
+  </div>
+
+  <script src="status.js"></script>
+</body>
+</html>

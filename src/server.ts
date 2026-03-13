@@ -4,11 +4,14 @@
 
 import express from 'express';
 import cors from 'cors';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadConfig, getLogger } from './core/index.js';
 import { getDb, closeDb } from './storage/index.js';
 import { startScheduler, stopScheduler } from './monitors/index.js';
 import { router } from './api/routes.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const config = loadConfig();
 const log = getLogger();
 
@@ -17,6 +20,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
+
+// Status page static files
+app.use(express.static('src/status-page'));
+
+// Serve index.html for root path
+app.get('/', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'status-page', 'index.html'));
+});
 
 // API routes
 app.use(router);

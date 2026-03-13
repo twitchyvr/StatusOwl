@@ -9,6 +9,13 @@ import { CreateServiceSchema } from '../core/index.js';
 import { createService, getService, listServices, updateService, deleteService } from '../storage/index.js';
 import { getRecentChecks, getUptimeSummary } from '../storage/index.js';
 import { scheduleService, unscheduleService } from '../monitors/index.js';
+import {
+  getOpenIncidents,
+  getIncidentById,
+  getIncidentsByService,
+  updateIncidentStatus,
+} from '../incidents/index.js';
+import { getDb } from '../storage/database.js';
 
 export const router = Router();
 
@@ -119,4 +126,61 @@ router.get('/api/status', (_req, res) => {
       })),
     },
   });
+});
+
+// ── Incidents ──
+
+router.get('/api/incidents', (_req, res) => {
+  const result = getOpenIncidents();
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.get('/api/incidents/:id', (req, res) => {
+  const result = getIncidentById(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+
+  // Attach timeline entries for the status page
+  const db = getDb();
+  const updates = db.prepare(
+    'SELECT id, incident_id AS "incidentId", status, message, created_at AS "createdAt" FROM incident_updates WHERE incident_id = ? ORDER BY created_at ASC'
+  ).all(req.params.id);
+
+  res.json({ ...result, data: { ...result.data, timeline: updates } });
+});
+
+router.get('/api/services/:id/incidents', (req, res) => {
+  const result = getIncidentsByService(req.params.id);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.post('/api/incidents/:id/update', (req, res) => {
+  const { status, message } = req.body;
+
+  if (!status || !message) {
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'VALIDATION', message: 'status and message are required' }
+    });
+  }
+
+  const validStatuses = ['investigating', 'identified', 'monitoring', 'resolved'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'VALIDATION', message: 'status must be one of: investigating, identified, monitoring, resolved' }
+    });
+  }
+
+  const result = updateIncidentStatus(req.params.id, status, message);
+  if (!result.ok) {
+    const statusCode = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(statusCode).json(result);
+  }
+
+  res.json(result);
 });

@@ -20,7 +20,6 @@ export type {
   IncidentSeverity,
   IncidentStatus,
   Webhook,
-  WebhookEventType,
   UptimeSummary,
 } from './contracts.js';
 
@@ -32,4 +31,5 @@ export {
   IncidentSchema,
   IncidentUpdateSchema,
   WebhookSchema,
+  WebhookEventType,
 } from './contracts.js';
