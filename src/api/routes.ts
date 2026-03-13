@@ -7,7 +7,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { CreateServiceSchema, CreateServiceGroupSchema, CreateMaintenanceWindowSchema } from '../core/index.js';
 import { createService, getService, listServices, updateService, deleteService } from '../storage/index.js';
-import { getRecentChecks, getUptimeSummary, getDailyHistory } from '../storage/index.js';
+import { getRecentChecks, getUptimeSummary, getDailyHistory, getLatestSslCheck, getSslHistory } from '../storage/index.js';
+import { getPercentiles } from '../monitors/percentile-aggregator.js';
 import { createGroup, getGroup, listGroups, updateGroup, deleteGroup } from '../storage/index.js';
 import {
   createMaintenanceWindow,
@@ -241,6 +242,33 @@ router.get('/api/services/:id/uptime/history', (req, res) => {
     return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'days must be between 1 and 365' } });
   }
   const result = getDailyHistory(req.params.id, days);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+// ── SSL Certificate ──
+
+router.get('/api/services/:id/ssl', (req, res) => {
+  const result = getLatestSslCheck(req.params.id);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.get('/api/services/:id/ssl/history', (req, res) => {
+  const limit = parseInt(req.query.limit as string) || 30;
+  const result = getSslHistory(req.params.id, limit);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+// ── Response Time Percentiles ──
+
+router.get('/api/services/:id/percentiles', (req, res) => {
+  const hours = parseInt(req.query.hours as string) || 24;
+  if (hours < 1 || hours > 720) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'hours must be between 1 and 720' } });
+  }
+  const result = getPercentiles(req.params.id, hours);
   if (!result.ok) return res.status(500).json(result);
   res.json(result);
 });
