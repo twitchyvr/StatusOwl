@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="StatusOwl - Real-time service health monitoring and status page">
+  <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)">
+  <title>StatusOwl</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x1F989;</text></svg>">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x1F989;</text></svg>">
+  <link rel="stylesheet" href="status.css">
+</head>
+<body>
+  <a class="skip-link" href="#services-list">Skip to content</a>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1 class="logo"><span role="img" aria-label="Owl">&#x1F989;</span> StatusOwl</h1>
+      <div class="header-controls">
+        <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" aria-pressed="false">
+          <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <svg class="moon-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+        <button class="refresh-btn" id="refresh-btn" aria-label="Refresh status data">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          Refresh
+        </button>
+        <div class="refresh-timer" id="refresh-timer" aria-live="polite">
+          <span class="refresh-timer-dot"></span>
+          <span class="refresh-timer-text">Refreshing in 60s</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Last Updated -->
+    <div class="last-updated" id="last-updated" aria-live="polite"></div>
+
+    <!-- Overall Status Banner -->
+    <section class="status-banner" id="overall-status" aria-label="Overall system status">
+      <div class="status-indicator">
+        <span class="status-dot" id="overall-dot"></span>
+        <span class="status-text" id="overall-text">Loading...</span>
+      </div>
+    </section>
+
+    <!-- Services List -->
+    <section class="services-section" aria-label="Service status list">
+      <h2>System Status</h2>
+      <div class="services-list" id="services-list">
+        <!-- Services will be rendered here -->
+        <div class="loading">Loading services...</div>
+      </div>
+    </section>
+
+    <!-- Open Incidents -->
+    <section class="incidents-section" id="incidents-section" style="display: none;" aria-label="Open incidents">
+      <h2>Open Incidents</h2>
+      <div class="incidents-list" id="incidents-list">
+        <!-- Incidents will be rendered here -->
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>Powered by <a href="https://github.com/twitchyvr/StatusOwl">StatusOwl</a></p>
+    </footer>
+  </div>
+
+  <script src="status.js"></script>
+</body>
+</html>

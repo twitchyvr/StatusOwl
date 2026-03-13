@@ -1,9 +1,34 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+
+# Database files
+data/
 *.db
 *.db-wal
 *.db-shm
+
+# Environment
 .env
 .env.local
+.env.production
+
+# OS
 .DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test coverage
 coverage/
+
+# Logs
+*.log
+logs/
+exit-document.json
