@@ -40,6 +40,8 @@ export type {
   HealthScoreBreakdown,
   HealthScoreWeights,
   SlaCompliance,
+  Tag,
+  ServiceTag,
 } from './contracts.js';
 
 export {
@@ -67,4 +69,6 @@ export {
   SlaTargetSchema,
   CreateSlaTargetSchema,
   EvaluationPeriod,
+  TagSchema,
+  ServiceTagSchema,
 } from './contracts.js';

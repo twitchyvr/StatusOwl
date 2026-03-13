@@ -33,6 +33,12 @@ StatusOwl monitors HTTP endpoints, tracks incidents, displays uptime history, an
 - **Health Score + SLA Tracking** — Weighted health score calculation, per-service SLA targets with compliance monitoring
 - **Uptime History Calendar** — GitHub-style contribution calendar showing daily uptime levels
 - **SSE Event Stream** — Server-Sent Events for real-time status page updates with event replay
+- **HTTP Response Caching** — ETag/Last-Modified middleware with LRU cache, conditional 304 responses, auto-invalidation
+- **Maintenance Notifications** — Automated pre/start/end notifications via email, webhooks, and SSE
+- **Dark Mode + Themes** — Light/dark themes with OS detection, toggle button, server-side config API
+- **Service Tags** — Tag-based service organization with AND/OR filtering and color labels
+- **Composite Services** — Virtual services with aggregated status (worst-case, majority, weighted rules)
+- **Bulk Operations** — Batch create/update/delete up to 100 services with atomic or partial mode
 - **Paginated API** — Cursor-based pagination with filtering on `/api/v2/` endpoints
 - **RESTful API** — Full CRUD for services, groups, incidents, maintenance windows, alert policies, and auth
 - **Graceful Shutdown** — Proper signal handling, scheduler cleanup, database close

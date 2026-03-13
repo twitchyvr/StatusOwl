@@ -1,90 +1,10 @@
 /**
  * StatusOwl — Status Page Styles
  * Clean, professional, modern design with light/dark theme support
+ *
+ * All color values are defined as CSS custom properties in theme.css.
+ * This file references those variables exclusively — no hardcoded hex colors.
  */
-
-/* CSS Custom Properties - Light Theme (default) */
-:root {
-  /* Branding — overridden dynamically via /api/branding */
-  --brand-primary: #2563eb;
-  --brand-accent: #059669;
-
-  --color-operational: #22c55e;
-  --color-degraded: #eab308;
-  --color-partial-outage: #f97316;
-  --color-outage: #ef4444;
-  --color-maintenance: #6366f1;
-  --color-background: #f8fafc;
-  --color-surface: #ffffff;
-  --color-text-primary: #1e293b;
-  --color-text-secondary: #64748b;
-  --color-border: #e2e8f0;
-  --color-shadow: rgba(0, 0, 0, 0.05);
-  --color-focus: var(--brand-primary);
-
-  /* Incident status badge colors */
-  --color-investigating: #facc15;
-  --color-investigating-text: #713f12;
-  --color-identified: #f97316;
-  --color-identified-text: #7c2d12;
-  --color-monitoring: #3b82f6;
-  --color-monitoring-text: #1e3a5f;
-
-  /* Severity badge colors */
-  --color-severity-minor-bg: #fef9c3;
-  --color-severity-minor-text: #a16207;
-  --color-severity-major-bg: #fee2e2;
-  --color-severity-major-text: #b91c1c;
-  --color-severity-critical-bg: #fecaca;
-  --color-severity-critical-text: #991b1b;
-
-  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-
-  --spacing-xs: 0.25rem;
-  --spacing-sm: 0.5rem;
-  --spacing-md: 1rem;
-  --spacing-lg: 1.5rem;
-  --spacing-xl: 2rem;
-
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-
-  --transition-fast: 150ms ease;
-  --transition-normal: 250ms ease;
-}
-
-/* Dark Theme */
-[data-theme="dark"] {
-  --color-background: #0f172a;
-  --color-surface: #1e293b;
-  --color-text-primary: #f1f5f9;
-  --color-text-secondary: #94a3b8;
-  --color-border: #334155;
-  --color-shadow: rgba(0, 0, 0, 0.3);
-  --color-focus: var(--brand-primary);
-
-  --color-operational: #4ade80;
-  --color-degraded: #facc15;
-  --color-partial-outage: #fb923c;
-  --color-outage: #f87171;
-  --color-maintenance: #818cf8;
-
-  --color-investigating: #facc15;
-  --color-investigating-text: #422006;
-  --color-identified: #fb923c;
-  --color-identified-text: #431407;
-  --color-monitoring: #60a5fa;
-  --color-monitoring-text: #172554;
-
-  /* Severity badge dark mode */
-  --color-severity-minor-bg: #854d0e;
-  --color-severity-minor-text: #fef9c3;
-  --color-severity-major-bg: #991b1b;
-  --color-severity-major-text: #fee2e2;
-  --color-severity-critical-bg: #7f1d1d;
-  --color-severity-critical-text: #fecaca;
-}
 
 /* Skip Navigation Link */
 .skip-link {
@@ -211,6 +131,23 @@ button:focus-visible {
 .theme-toggle svg {
   width: 18px;
   height: 18px;
+}
+
+/* Show sun icon in dark mode, moon icon in light mode */
+.theme-toggle .sun-icon {
+  display: none;
+}
+
+.theme-toggle .moon-icon {
+  display: block;
+}
+
+[data-theme="dark"] .theme-toggle .sun-icon {
+  display: block;
+}
+
+[data-theme="dark"] .theme-toggle .moon-icon {
+  display: none;
 }
 
 /* Refresh Button */
@@ -507,7 +444,7 @@ button:focus-visible {
 }
 
 .service-status-dot.unknown {
-  background-color: var(--color-text-secondary);
+  background-color: var(--color-unknown);
 }
 
 .service-status-label {
@@ -743,12 +680,8 @@ button:focus-visible {
 }
 
 .incident-status-badge.resolved {
-  background-color: var(--color-operational);
-  color: #14532d;
-}
-
-[data-theme="dark"] .incident-status-badge.resolved {
-  color: #052e16;
+  background-color: var(--color-resolved-badge-bg);
+  color: var(--color-resolved-badge-text);
 }
 
 /* Loading State */
@@ -772,8 +705,8 @@ button:focus-visible {
 }
 
 .retry-btn {
-  background: var(--color-outage);
-  color: #fff;
+  background: var(--color-button-danger);
+  color: var(--color-button-danger-text);
   border: none;
   border-radius: var(--radius-md);
   padding: var(--spacing-sm) var(--spacing-lg);
@@ -814,8 +747,8 @@ button:focus-visible {
 
 /* Maintenance Banner */
 .maintenance-banner {
-  background-color: #fef3c7;
-  border: 1px solid #fbbf24;
+  background-color: var(--color-maintenance-banner-bg);
+  border: 1px solid var(--color-maintenance-banner-border);
   border-radius: var(--radius-md);
   padding: var(--spacing-md) var(--spacing-lg);
   margin-bottom: var(--spacing-md);
@@ -823,25 +756,15 @@ button:focus-visible {
   align-items: center;
   gap: var(--spacing-sm);
   font-size: 0.875rem;
-  color: #92400e;
+  color: var(--color-maintenance-banner-text);
   line-height: 1.4;
-}
-
-[data-theme="dark"] .maintenance-banner {
-  background-color: #451a03;
-  border-color: #b45309;
-  color: #fde68a;
 }
 
 .maintenance-banner-icon {
   flex-shrink: 0;
   width: 20px;
   height: 20px;
-  color: #d97706;
-}
-
-[data-theme="dark"] .maintenance-banner-icon {
-  color: #fbbf24;
+  color: var(--color-maintenance-banner-icon);
 }
 
 .maintenance-banner-items {
@@ -1175,11 +1098,11 @@ button:focus-visible {
 }
 
 .sse-indicator.connected {
-  background-color: #4c1;
+  background-color: var(--color-sse-connected);
 }
 
 .sse-indicator.disconnected {
-  background-color: #e05d44;
+  background-color: var(--color-sse-disconnected);
 }
 
 .sse-status {

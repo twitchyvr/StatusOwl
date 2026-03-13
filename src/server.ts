@@ -13,6 +13,7 @@ import { startDailyAggregator, stopDailyAggregator } from './monitors/daily-aggr
 import { startPercentileAggregator, stopPercentileAggregator } from './monitors/percentile-aggregator.js';
 import { startReportScheduler, stopReportScheduler } from './reports/index.js';
 import { router } from './api/routes.js';
+import { themeRouter } from './api/theme-config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const config = loadConfig();
@@ -34,6 +35,7 @@ app.get('/', (_req, res) => {
 
 // API routes
 app.use(router);
+app.use(themeRouter);
 
 // Health endpoint
 app.get('/health', (_req, res) => {

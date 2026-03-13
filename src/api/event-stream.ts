@@ -20,6 +20,7 @@ export type SseEventType =
   | 'incident.created'
   | 'incident.updated'
   | 'incident.resolved'
+  | 'maintenance.upcoming'
   | 'maintenance.started'
   | 'maintenance.ended'
   | 'check.completed';
@@ -29,6 +30,7 @@ export const SSE_EVENT_TYPES: readonly SseEventType[] = [
   'incident.created',
   'incident.updated',
   'incident.resolved',
+  'maintenance.upcoming',
   'maintenance.started',
   'maintenance.ended',
   'check.completed',

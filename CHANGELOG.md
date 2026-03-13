@@ -4,6 +4,20 @@ All notable changes to StatusOwl are documented here. This project follows [Sema
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-03-13
+
+### Added
+- **HTTP Response Caching** — ETag/Last-Modified middleware with in-memory LRU cache (500 entries, configurable TTL), conditional 304 responses, automatic invalidation on mutations, cache stats endpoint (#74)
+- **Maintenance Notification Automation** — Pre-maintenance alerts (1h before), start/end notifications via email/webhook/SSE, duplicate prevention with tracking table, 5-minute scan interval (#75)
+- **Dark Mode + Theme Engine** — CSS custom properties for all colors, light/dark themes, OS preference detection, localStorage persistence, theme toggle button, server-side theme config API (#76)
+- **Service Tags** — Tag CRUD with colors, service-tag associations, AND/OR tag-based filtering, cascade delete, 10 predefined default colors (#77)
+- **Composite Services** — Virtual services with aggregated status from children: worst-case, majority, and weighted derivation rules, BFS cycle detection, nested composites (#78)
+- **Bulk Operations API** — Batch create/update/delete services (up to 100 per request), atomic transaction mode with rollback, partial mode with per-item results, Zod validation, audit logging (#79)
+- Database migrations #14 (maintenance_notifications), #15 (tags + service_tags), #16 (composite_children)
+- `composite` check type for virtual services
+- API routes: `/api/bulk/services/{create,update,delete}`, `/api/tags`, `/api/services/:id/tags`, `/api/theme`, theme config CRUD
+- 834 tests across 40 modules (228 new tests)
+
 ## [0.6.0] — 2026-03-13
 
 ### Added
