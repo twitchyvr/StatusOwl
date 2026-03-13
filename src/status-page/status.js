@@ -80,9 +80,9 @@ function startRefreshTimer() {
   countdownInterval = setInterval(() => {
     secondsUntilRefresh--;
     updateRefreshTimerDisplay();
-    
+
     if (secondsUntilRefresh <= 0) {
-      secondsUntilRefresh = REFRESH_INTERVAL / 1000;
+      refreshData();
     }
   }, 1000);
 }
@@ -115,9 +115,13 @@ function getStatusColor(status) {
       return 'operational';
     case 'degraded':
       return 'degraded';
+    case 'partial_outage':
+      return 'partial-outage';
     case 'major_outage':
     case 'outage':
       return 'outage';
+    case 'maintenance':
+      return 'maintenance';
     default:
       return 'unknown';
   }
@@ -132,10 +136,14 @@ function getStatusLabel(status) {
       return 'Operational';
     case 'degraded':
       return 'Degraded';
+    case 'partial_outage':
+      return 'Partial Outage';
     case 'major_outage':
       return 'Major Outage';
     case 'outage':
       return 'Outage';
+    case 'maintenance':
+      return 'Maintenance';
     default:
       return 'Unknown';
   }
@@ -150,8 +158,12 @@ function getOverallStatusLabel(status) {
       return 'All Systems Operational';
     case 'degraded':
       return 'Some Systems Degraded';
+    case 'partial_outage':
+      return 'Partial Outage';
     case 'major_outage':
       return 'Major Outage';
+    case 'maintenance':
+      return 'Scheduled Maintenance';
     default:
       return 'Status Unknown';
   }
@@ -230,9 +242,15 @@ function renderUptimeBar(history) {
         case 'degraded':
           cellClass = 'degraded';
           break;
+        case 'partial_outage':
+          cellClass = 'partial-outage';
+          break;
         case 'outage':
         case 'major_outage':
           cellClass = 'outage';
+          break;
+        case 'maintenance':
+          cellClass = 'maintenance';
           break;
         default:
           cellClass = 'no-data';
@@ -451,12 +469,18 @@ function renderIncidents(incidents) {
 }
 
 /**
- * Escape HTML to prevent XSS
+ * Escape HTML to prevent XSS.
+ * Handles &, <, >, ", ', and backtick characters.
  */
 function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  if (text == null) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/`/g, '&#96;');
 }
 
 /**
@@ -525,11 +549,8 @@ function init() {
     themeToggle.addEventListener('click', toggleTheme);
   }
   
-  // Initial data fetch
+  // Initial data fetch (also starts the auto-refresh countdown timer)
   refreshData();
-  
-  // Auto-refresh with countdown timer
-  startRefreshTimer();
 }
 
 // Start the application when DOM is ready

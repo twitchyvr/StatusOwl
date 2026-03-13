@@ -4,7 +4,7 @@
  * RESTful API for services, checks, incidents, and status.
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { CreateServiceSchema } from '../core/index.js';
 import { createService, getService, listServices, updateService, deleteService } from '../storage/index.js';
 import { getRecentChecks, getUptimeSummary } from '../storage/index.js';
@@ -18,7 +18,76 @@ import {
 import { getDb } from '../storage/database.js';
 import { requireAuth } from './auth.js';
 
+// ── In-memory rate limiter (sliding window) ──
+
+interface RateLimitEntry {
+  timestamps: number[];
+}
+
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 100;  // max requests per window
+
+const rateLimitStore = new Map<string, RateLimitEntry>();
+
+/**
+ * Clean up expired entries from the rate limit store.
+ * Runs periodically to prevent memory leaks.
+ */
+function cleanupRateLimitStore(): void {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitStore) {
+    entry.timestamps = entry.timestamps.filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
+    if (entry.timestamps.length === 0) {
+      rateLimitStore.delete(key);
+    }
+  }
+}
+
+// Cleanup every 5 minutes
+const _rateLimitCleanupTimer = setInterval(cleanupRateLimitStore, 5 * 60_000);
+// Allow the process to exit without waiting for the timer
+if (_rateLimitCleanupTimer.unref) {
+  _rateLimitCleanupTimer.unref();
+}
+
+/**
+ * Rate limiting middleware using a sliding window approach.
+ * Identifies clients by IP address. Returns 429 when limit is exceeded.
+ */
+export function rateLimit(req: Request, res: Response, next: NextFunction): void {
+  const clientIp = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+  const now = Date.now();
+
+  let entry = rateLimitStore.get(clientIp);
+  if (!entry) {
+    entry = { timestamps: [] };
+    rateLimitStore.set(clientIp, entry);
+  }
+
+  // Remove timestamps outside the sliding window
+  entry.timestamps = entry.timestamps.filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
+
+  if (entry.timestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
+    const retryAfter = Math.ceil((entry.timestamps[0] + RATE_LIMIT_WINDOW_MS - now) / 1000);
+    res.set('Retry-After', String(retryAfter));
+    res.status(429).json({
+      ok: false,
+      error: {
+        code: 'RATE_LIMITED',
+        message: `Too many requests. Try again in ${retryAfter} seconds.`,
+      },
+    });
+    return;
+  }
+
+  entry.timestamps.push(now);
+  next();
+}
+
 export const router = Router();
+
+// Apply rate limiting to all API routes
+router.use(rateLimit);
 
 // ── Services ──
 

@@ -6,8 +6,19 @@
  * If no API key is configured, authentication is skipped (dev mode).
  */
 
+import { timingSafeEqual } from 'node:crypto';
 import { Request, Response, NextFunction } from 'express';
 import { getConfig } from '../core/index.js';
+
+/**
+ * Constant-time string comparison to prevent timing attacks.
+ * Uses crypto.timingSafeEqual with Buffer conversion.
+ * Returns false if lengths differ (length info is already leaked by HTTP).
+ */
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a, 'utf-8'), Buffer.from(b, 'utf-8'));
+}
 
 /**
  * Extracts API key from request headers.
@@ -58,7 +69,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     return;
   }
 
-  if (providedKey !== config.apiKey) {
+  if (!safeCompare(providedKey, config.apiKey)) {
     res.status(401).json({
       ok: false,
       error: {

@@ -93,7 +93,18 @@ async function runCheck(service: Service): Promise<void> {
       responseTime: Math.round(result.responseTime),
     }, 'Check completed');
   } catch (e) {
-    log.error({ serviceId: service.id, error: e instanceof Error ? e.message : String(e) }, 'Check failed unexpectedly');
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    log.error({ serviceId: service.id, error: errorMessage }, 'Check failed unexpectedly');
+
+    // Update service status to major_outage on unexpected failures
+    // so the status page reflects reality even when the checker itself throws
+    updateServiceStatus(service.id, 'major_outage');
+    recordCheck(service.id, 'major_outage', 0, null, `Scheduler error: ${errorMessage}`);
+
+    // Still run incident detection so auto-incidents work
+    await detectIncidents().catch((detectionErr) => {
+      log.error({ serviceId: service.id, error: detectionErr }, 'Incident detection failed after scheduler error');
+    });
   }
 }
 
