@@ -41,24 +41,24 @@ describe('Incident Detector', () => {
   });
 
   describe('detectIncidents', () => {
-    it('should NOT create incident for less than 3 consecutive failures', () => {
+    it('should NOT create incident for less than 3 consecutive failures', async () => {
       // Record 2 failures
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
 
-      const result = detectIncidents();
+      const result = await detectIncidents();
 
       expect(result.ok).toBe(true);
       expect(result.data.created).toHaveLength(0);
     });
 
-    it('should create incident after 3 consecutive failures', () => {
+    it('should create incident after 3 consecutive failures', async () => {
       // Record 3 consecutive failures
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
 
-      const result = detectIncidents();
+      const result = await detectIncidents();
 
       expect(result.ok).toBe(true);
       expect(result.data.created).toHaveLength(1);
@@ -66,27 +66,27 @@ describe('Incident Detector', () => {
       expect(result.data.created[0].serviceIds).toContain(testServiceId);
     });
 
-    it('should create incident with correct severity based on failure types', () => {
+    it('should create incident with correct severity based on failure types', async () => {
       // Test degraded -> partial_outage -> major_outage progression for critical
       recordCheck(testServiceId, 'degraded' as ServiceStatus, 2000, 503, 'Slow response');
       recordCheck(testServiceId, 'partial_outage' as ServiceStatus, 3000, 503, 'High error rate');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
 
-      const result = detectIncidents();
+      const result = await detectIncidents();
 
       expect(result.ok).toBe(true);
       expect(result.data.created).toHaveLength(1);
       expect(result.data.created[0].severity).toBe('critical');
     });
 
-    it('should NOT create duplicate incident if one already exists', () => {
+    it('should NOT create duplicate incident if one already exists', async () => {
       // Record 3 failures to create first incident
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
 
       // First detection creates incident
-      const firstResult = detectIncidents();
+      const firstResult = await detectIncidents();
       expect(firstResult.data.created).toHaveLength(1);
       const incidentId = firstResult.data.created[0].id;
 
@@ -94,7 +94,7 @@ describe('Incident Detector', () => {
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
 
       // Second detection should NOT create another incident
-      const secondResult = detectIncidents();
+      const secondResult = await detectIncidents();
       expect(secondResult.data.created).toHaveLength(0);
 
       // Verify only one incident exists
@@ -103,13 +103,13 @@ describe('Incident Detector', () => {
       expect(openIncidents.data[0].id).toBe(incidentId);
     });
 
-    it('should resolve incident when service recovers', () => {
+    it('should resolve incident when service recovers', async () => {
       // Create an incident first by having 3 failures
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
 
-      const firstResult = detectIncidents();
+      const firstResult = await detectIncidents();
       expect(firstResult.data.created).toHaveLength(1);
       const incidentId = firstResult.data.created[0].id;
 
@@ -117,7 +117,7 @@ describe('Incident Detector', () => {
       recordCheck(testServiceId, 'operational' as ServiceStatus, 150, 200, null);
 
       // Run detection again - should resolve the incident
-      const secondResult = detectIncidents();
+      const secondResult = await detectIncidents();
 
       expect(secondResult.data.resolved).toHaveLength(1);
       expect(secondResult.data.resolved[0].id).toBe(incidentId);
@@ -129,20 +129,20 @@ describe('Incident Detector', () => {
       expect(getResult.data.resolvedAt).toBeDefined();
     });
 
-    it('should NOT resolve incident if service is still failing', () => {
+    it('should NOT resolve incident if service is still failing', async () => {
       // Create an incident
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
 
-      const firstResult = detectIncidents();
+      const firstResult = await detectIncidents();
       expect(firstResult.data.created).toHaveLength(1);
 
       // Add another failure (not a recovery)
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
 
       // Run detection - should NOT resolve
-      const secondResult = detectIncidents();
+      const secondResult = await detectIncidents();
 
       expect(secondResult.data.resolved).toHaveLength(0);
       expect(secondResult.data.created).toHaveLength(0);
@@ -153,7 +153,7 @@ describe('Incident Detector', () => {
       expect(openIncidents.data[0].status).toBe('investigating');
     });
 
-    it('should handle multiple services independently', () => {
+    it('should handle multiple services independently', async () => {
       // Create second service
       const service2 = createService({
         name: 'Service 2',
@@ -171,14 +171,14 @@ describe('Incident Detector', () => {
       recordCheck(service2Id, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(service2Id, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
 
-      const result = detectIncidents();
+      const result = await detectIncidents();
 
       expect(result.ok).toBe(true);
       expect(result.data.created).toHaveLength(1);
       expect(result.data.created[0].serviceIds).toContain(testServiceId);
     });
 
-    it('should track failures with mixed operational and failure statuses', () => {
+    it('should track failures with mixed operational and failure statuses', async () => {
       // Pattern: fail, fail, success, fail, fail, fail
       // Should only count the last 3 consecutive failures
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
@@ -188,7 +188,7 @@ describe('Incident Detector', () => {
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
 
-      const result = detectIncidents();
+      const result = await detectIncidents();
 
       expect(result.ok).toBe(true);
       expect(result.data.created).toHaveLength(1);
@@ -200,7 +200,7 @@ describe('Incident Detector', () => {
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
 
-      detectIncidents();
+      await detectIncidents();
 
       // The detector doesn't automatically update service status
       // But the service check outcome from the checker would
@@ -211,26 +211,26 @@ describe('Incident Detector', () => {
   });
 
   describe('convenience functions', () => {
-    it('getOpenIncidentsForApi should return open incidents', () => {
+    it('getOpenIncidentsForApi should return open incidents', async () => {
       // Create an incident
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
 
-      detectIncidents();
+      await detectIncidents();
 
       const result = getOpenIncidentsForApi();
       expect(result.ok).toBe(true);
       expect(result.data.length).toBe(1);
     });
 
-    it('getIncidentsForService should return incidents for specific service', () => {
+    it('getIncidentsForService should return incidents for specific service', async () => {
       // Create incident
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
 
-      detectIncidents();
+      await detectIncidents();
 
       const result = getIncidentsForService(testServiceId);
       expect(result.ok).toBe(true);
@@ -238,13 +238,13 @@ describe('Incident Detector', () => {
       expect(result.data[0].serviceIds).toContain(testServiceId);
     });
 
-    it('getIncident should return specific incident', () => {
+    it('getIncident should return specific incident', async () => {
       // Create incident
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
       recordCheck(testServiceId, 'major_outage' as ServiceStatus, 5000, null, 'Timeout');
 
-      const detectResult = detectIncidents();
+      const detectResult = await detectIncidents();
       const incidentId = detectResult.data.created[0].id;
 
       const result = getIncident(incidentId);

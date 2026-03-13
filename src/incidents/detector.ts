@@ -17,6 +17,7 @@ import {
   getIncidentsByService,
   getIncidentById,
 } from './incident-repo.js';
+import { notifyIncident } from '../notifications/index.js';
 
 const log = createChildLogger('IncidentDetector');
 
@@ -37,7 +38,7 @@ const CONSECUTIVE_FAILURE_THRESHOLD = 3;
  * 1. Creates new incidents for services with 3+ consecutive failures
  * 2. Resolves existing incidents when a service recovers
  */
-export function detectIncidents(): Result<IncidentDetectionResult> {
+export async function detectIncidents(): Promise<Result<IncidentDetectionResult>> {
   const db = getDb();
   const result: IncidentDetectionResult = {
     created: [],
@@ -52,7 +53,7 @@ export function detectIncidents(): Result<IncidentDetectionResult> {
     ).all() as Record<string, string>[];
 
     for (const service of servicesResult) {
-      const detectionResult = processServiceChecks(service.id, service.name, db);
+      const detectionResult = await processServiceChecks(service.id, service.name, db);
       
       if (detectionResult.created) {
         result.created.push(detectionResult.created);
@@ -81,11 +82,11 @@ export function detectIncidents(): Result<IncidentDetectionResult> {
 /**
  * Process checks for a single service to detect new incidents or resolutions.
  */
-function processServiceChecks(
+async function processServiceChecks(
   serviceId: string,
   serviceName: string,
   db: ReturnType<typeof getDb>
-): { created?: Incident; resolved?: Incident; error?: string } {
+): Promise<{ created?: Incident; resolved?: Incident; error?: string }> {
   try {
     // Get recent checks for this service (enough to detect 3+ consecutive failures)
     const recentChecks = db.prepare(`
@@ -119,6 +120,12 @@ function processServiceChecks(
       
       if (createResult.ok) {
         log.info({ serviceId, serviceName, failureCount }, 'Created new incident');
+        
+        // Send notifications
+        await notifyIncident(createResult.data, 'created').catch((e) => {
+          log.error({ incidentId: createResult.data.id, error: e }, 'Failed to send incident notifications');
+        });
+        
         return { created: createResult.data };
       } else {
         return { error: `Failed to create incident: ${createResult.error.message}` };
@@ -133,6 +140,12 @@ function processServiceChecks(
       
       if (resolveResult.ok) {
         log.info({ serviceId, serviceName, incidentId: existingIncident.id }, 'Resolved incident');
+        
+        // Send notifications
+        await notifyIncident(resolveResult.data, 'resolved').catch((e) => {
+          log.error({ incidentId: resolveResult.data.id, error: e }, 'Failed to send incident notifications');
+        });
+        
         return { resolved: resolveResult.data };
       } else {
         return { error: `Failed to resolve incident: ${resolveResult.error.message}` };

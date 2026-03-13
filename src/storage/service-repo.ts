@@ -89,6 +89,28 @@ export function listServices(opts?: { enabled?: boolean; groupId?: string | null
   }
 }
 
+/**
+ * Get multiple services by their IDs.
+ */
+export function getServicesByIds(ids: string[]): Result<Service[]> {
+  if (ids.length === 0) {
+    return ok([]);
+  }
+
+  try {
+    const db = getDb();
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = db.prepare(
+      `SELECT * FROM services WHERE id IN (${placeholders})`
+    ).all(...ids) as Record<string, unknown>[];
+
+    return ok(rows.map(rowToService));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return err('QUERY_FAILED', msg);
+  }
+}
+
 export function updateService(id: string, updates: Partial<CreateService>): Result<Service> {
   try {
     const db = getDb();

@@ -84,7 +84,7 @@ async function runCheck(service: Service): Promise<void> {
     updateServiceStatus(service.id, result.status);
 
     // Run incident detection after each check
-    detectIncidents();
+    await detectIncidents();
 
     log.debug({
       id: service.id,

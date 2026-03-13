@@ -13,7 +13,17 @@ export {
 } from './webhook-repo.js';
 
 export {
-  dispatchEvent,
+  notifyIncident,
 } from './dispatcher.js';
 
-export type { WebhookPayload } from './dispatcher.js';
+export type { IncidentEvent } from './dispatcher.js';
+
+export {
+  sendSlackNotification,
+  formatSlackMessage,
+} from './slack.js';
+
+export {
+  sendDiscordNotification,
+  formatDiscordEmbed,
+} from './discord.js';

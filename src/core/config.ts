@@ -27,6 +27,10 @@ const ConfigSchema = z.object({
   // Webhook alerts
   webhookRetries: z.coerce.number().default(3),
   webhookBackoffMs: z.coerce.number().default(1000),
+
+  // External notifications
+  slackWebhook: z.string().url().optional(),
+  discordWebhook: z.string().url().optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -49,6 +53,8 @@ export function loadConfig(): Config {
     siteDescription: process.env.SITE_DESCRIPTION,
     webhookRetries: process.env.WEBHOOK_RETRIES,
     webhookBackoffMs: process.env.WEBHOOK_BACKOFF_MS,
+    slackWebhook: process.env.STATUSOWL_SLACK_WEBHOOK,
+    discordWebhook: process.env.STATUSOWL_DISCORD_WEBHOOK,
   });
 
   return _config;
