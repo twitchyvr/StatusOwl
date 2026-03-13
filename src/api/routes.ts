@@ -124,7 +124,14 @@ router.post('/api/services', requireAuth, (req: Request, res: Response) => {
 });
 
 router.patch('/api/services/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
-  const result = updateService(req.params.id, req.body);
+  // Validate input against partial schema
+  const UpdateSchema = CreateServiceSchema.partial();
+  const parsed = UpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: parsed.error.message } });
+  }
+
+  const result = updateService(req.params.id, parsed.data);
   if (!result.ok) {
     const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
     return res.status(status).json(result);
@@ -178,10 +185,14 @@ router.get('/api/status', (_req, res) => {
   const services = result.data;
   const allOperational = services.every(s => s.status === 'operational');
   const anyMajor = services.some(s => s.status === 'major_outage');
+  const anyPartialOutage = services.some(s => s.status === 'partial_outage');
+  const anyMaintenance = services.every(s => s.status === 'maintenance');
 
   let overallStatus: string;
   if (allOperational) overallStatus = 'operational';
   else if (anyMajor) overallStatus = 'major_outage';
+  else if (anyPartialOutage) overallStatus = 'partial_outage';
+  else if (anyMaintenance) overallStatus = 'maintenance';
   else overallStatus = 'degraded';
 
   res.json({

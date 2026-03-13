@@ -171,6 +171,16 @@ export function deleteService(id: string): Result<void> {
 }
 
 function rowToService(row: Record<string, unknown>): Service {
+  let headers: Record<string, string> | undefined;
+  if (row.headers) {
+    try {
+      headers = JSON.parse(row.headers as string);
+    } catch {
+      log.warn({ serviceId: row.id, raw: row.headers }, 'Invalid JSON in headers column, ignoring');
+      headers = undefined;
+    }
+  }
+
   return {
     id: row.id as string,
     name: row.name as string,
@@ -179,7 +189,7 @@ function rowToService(row: Record<string, unknown>): Service {
     expectedStatus: row.expected_status as number,
     checkInterval: row.check_interval as number,
     timeout: row.timeout as number,
-    headers: row.headers ? JSON.parse(row.headers as string) : undefined,
+    headers,
     body: row.body as string | undefined,
     status: row.status as ServiceStatus,
     enabled: Boolean(row.enabled),
