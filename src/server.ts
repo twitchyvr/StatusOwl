@@ -12,8 +12,11 @@ import { startScheduler, stopScheduler } from './monitors/index.js';
 import { startDailyAggregator, stopDailyAggregator } from './monitors/daily-aggregator.js';
 import { startPercentileAggregator, stopPercentileAggregator } from './monitors/percentile-aggregator.js';
 import { startReportScheduler, stopReportScheduler } from './reports/index.js';
+import { startMaintenanceNotifier, stopMaintenanceNotifier } from './maintenance/notification-scheduler.js';
 import { router } from './api/routes.js';
 import { themeRouter } from './api/theme-config.js';
+import { bulkRouter } from './api/bulk-operations.js';
+import { cacheMiddleware } from './api/cache-middleware.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const config = loadConfig();
@@ -33,9 +36,13 @@ app.get('/', (_req, res) => {
   res.sendFile(path.join(__dirname, 'status-page', 'index.html'));
 });
 
+// HTTP response caching middleware for GET API endpoints
+app.use('/api', cacheMiddleware());
+
 // API routes
 app.use(router);
 app.use(themeRouter);
+app.use(bulkRouter);
 
 // Health endpoint
 app.get('/health', (_req, res) => {
@@ -45,11 +52,12 @@ app.get('/health', (_req, res) => {
 // Initialize database
 getDb();
 
-// Start monitoring scheduler and daily aggregator
+// Start monitoring scheduler and background workers
 startScheduler();
 startDailyAggregator();
 startPercentileAggregator();
 startReportScheduler();
+startMaintenanceNotifier();
 
 const server = app.listen(config.port, config.host, () => {
   log.info({ port: config.port, host: config.host }, 'StatusOwl server started');
@@ -62,6 +70,7 @@ function shutdown() {
   stopDailyAggregator();
   stopPercentileAggregator();
   stopReportScheduler();
+  stopMaintenanceNotifier();
   server.close();
   closeDb();
   process.exit(0);
