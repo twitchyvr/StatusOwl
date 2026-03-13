@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { getDb } from './database.js';
 import { ok, err, createChildLogger } from '../core/index.js';
 import { decodeCursor } from '../api/pagination.js';
-import type { Result, Service, CreateService, ServiceStatus, BodyValidation } from '../core/index.js';
+import type { Result, Service, CreateService, ServiceStatus, BodyValidation, Assertion } from '../core/index.js';
 
 const log = createChildLogger('ServiceRepo');
 
@@ -19,8 +19,8 @@ export function createService(input: CreateService): Result<Service> {
     const now = new Date().toISOString();
 
     db.prepare(`
-      INSERT INTO services (id, name, url, method, check_type, expected_status, check_interval, timeout, headers, body, body_validation, status, enabled, group_id, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?, ?, ?, ?)
+      INSERT INTO services (id, name, url, method, check_type, expected_status, check_interval, timeout, headers, body, body_validation, assertions, status, enabled, group_id, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?, ?, ?, ?)
     `).run(
       id,
       input.name,
@@ -33,6 +33,7 @@ export function createService(input: CreateService): Result<Service> {
       input.headers ? JSON.stringify(input.headers) : null,
       input.body ?? null,
       input.bodyValidation ? JSON.stringify(input.bodyValidation) : null,
+      input.assertions ? JSON.stringify(input.assertions) : null,
       (input.enabled ?? true) ? 1 : 0,
       input.groupId ?? null,
       input.sortOrder ?? 0,
@@ -195,6 +196,7 @@ export function updateService(id: string, updates: Partial<CreateService>): Resu
     if (updates.headers !== undefined) { fields.push('headers = ?'); params.push(JSON.stringify(updates.headers)); }
     if (updates.body !== undefined) { fields.push('body = ?'); params.push(updates.body); }
     if (updates.bodyValidation !== undefined) { fields.push('body_validation = ?'); params.push(JSON.stringify(updates.bodyValidation)); }
+    if (updates.assertions !== undefined) { fields.push('assertions = ?'); params.push(JSON.stringify(updates.assertions)); }
     if (updates.enabled !== undefined) { fields.push('enabled = ?'); params.push(updates.enabled ? 1 : 0); }
     if (updates.groupId !== undefined) { fields.push('group_id = ?'); params.push(updates.groupId); }
     if (updates.sortOrder !== undefined) { fields.push('sort_order = ?'); params.push(updates.sortOrder); }
@@ -261,6 +263,16 @@ function rowToService(row: Record<string, unknown>): Service {
     }
   }
 
+  let assertions: Assertion[] | undefined;
+  if (row.assertions) {
+    try {
+      assertions = JSON.parse(row.assertions as string);
+    } catch {
+      log.warn({ serviceId: row.id, raw: row.assertions }, 'Invalid JSON in assertions column, ignoring');
+      assertions = undefined;
+    }
+  }
+
   return {
     id: row.id as string,
     name: row.name as string,
@@ -273,6 +285,7 @@ function rowToService(row: Record<string, unknown>): Service {
     headers,
     body: row.body as string | undefined,
     bodyValidation,
+    assertions,
     status: row.status as ServiceStatus,
     enabled: Boolean(row.enabled),
     groupId: (row.group_id as string) ?? null,

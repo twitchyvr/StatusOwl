@@ -5,8 +5,12 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { CreateServiceSchema, CreateServiceGroupSchema, CreateMaintenanceWindowSchema, CreateAlertPolicySchema, getConfig } from '../core/index.js';
+import { CreateServiceSchema, CreateServiceGroupSchema, CreateMaintenanceWindowSchema, CreateAlertPolicySchema, CreateSlaTargetSchema, getConfig } from '../core/index.js';
+import { ok, err } from '../core/index.js';
+import type { ServiceStatus } from '../core/index.js';
 import { createService, getService, listServices, listServicesPaginated, updateService, deleteService } from '../storage/index.js';
+import { generateBadgeSvg, getStatusText } from './badges.js';
+import { generateWidgetHtml } from './embed-widget.js';
 import { getRecentChecks, getUptimeSummary, getDailyHistory, getLatestSslCheck, getSslHistory } from '../storage/index.js';
 import { getPercentiles } from '../monitors/percentile-aggregator.js';
 import { createGroup, getGroup, listGroups, updateGroup, deleteGroup } from '../storage/index.js';
@@ -40,6 +44,19 @@ import { addDependency, removeDependency, getDependenciesOf, getDependentsOn, ge
 import { createSubscription, confirmSubscription, unsubscribe, listSubscriptions, deleteSubscription } from '../subscriptions/index.js';
 import { generateReport, getReport, listReports } from '../reports/index.js';
 import { createRegion, listRegions, getRegion, deleteRegion, getRegionalLatency } from '../monitors/region-repo.js';
+import { getDeliveryHistory, retryDelivery } from '../notifications/webhook-delivery.js';
+import { getWebhookById } from '../notifications/webhook-repo.js';
+import { getCalendarData, getOverallCalendarData } from './calendar.js';
+import { getEventBus } from './event-stream.js';
+import {
+  createSlaTarget,
+  getSlaTarget,
+  listSlaTargets,
+  updateSlaTarget,
+  deleteSlaTarget,
+  calculateHealthScore,
+  calculateSlaCompliance,
+} from '../sla/index.js';
 
 // ── In-memory rate limiter (sliding window) ──
 
@@ -845,5 +862,247 @@ router.get('/api/services/:id/regional-latency', (req, res) => {
   const hours = parseInt(req.query.hours as string) || 24;
   const result = getRegionalLatency(req.params.id, hours);
   if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+// ── Calendar (GitHub-style uptime heat map) ──
+
+router.get('/api/services/:id/calendar', (req, res) => {
+  const days = parseInt(req.query.days as string) || 90;
+  if (days < 1 || days > 365) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'days must be between 1 and 365' } });
+  }
+  const result = getCalendarData(req.params.id, days);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.get('/api/calendar', (req, res) => {
+  const days = parseInt(req.query.days as string) || 90;
+  if (days < 1 || days > 365) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'days must be between 1 and 365' } });
+  }
+  const result = getOverallCalendarData(days);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+// ── Health Score & SLA ──
+
+router.get('/api/services/:id/health-score', (req, res) => {
+  const result = calculateHealthScore(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+router.get('/api/services/:id/sla', (req, res) => {
+  const result = calculateSlaCompliance(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+router.get('/api/sla-targets', (_req, res) => {
+  const result = listSlaTargets();
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.post('/api/sla-targets', requireAuth, (req: Request, res: Response) => {
+  const parsed = CreateSlaTargetSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: parsed.error.message } });
+  }
+
+  const result = createSlaTarget(parsed.data);
+  if (!result.ok) {
+    const status = result.error.code === 'DUPLICATE' ? 409 : 500;
+    return res.status(status).json(result);
+  }
+  res.status(201).json(result);
+});
+
+router.patch('/api/sla-targets/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const UpdateSchema = CreateSlaTargetSchema.partial();
+  const parsed = UpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: parsed.error.message } });
+  }
+
+  const result = updateSlaTarget(req.params.id, parsed.data);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+router.delete('/api/sla-targets/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const result = deleteSlaTarget(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+// ── Server-Sent Events (SSE) ──
+
+router.get('/api/events', (req: Request, res: Response) => {
+  // Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+
+  // Flush headers immediately
+  res.flushHeaders();
+
+  // Send initial connected comment
+  res.write(':connected\n\n');
+
+  // Replay missed events if client sends Last-Event-ID
+  const lastEventId = req.headers['last-event-id'] as string | undefined;
+  if (lastEventId) {
+    const bus = getEventBus();
+    const missed = bus.getEventsSince(lastEventId);
+    for (const event of missed) {
+      res.write(`id: ${event.id}\nevent: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`);
+    }
+  }
+
+  // Subscribe this client
+  const bus = getEventBus();
+  bus.subscribe(res);
+
+  // Clean up on disconnect
+  req.on('close', () => {
+    bus.unsubscribe(res);
+  });
+});
+
+router.get('/api/events/stats', (_req: Request, res: Response) => {
+  const bus = getEventBus();
+  res.json({
+    ok: true,
+    data: { connections: bus.getConnectionCount() },
+  });
+});
+
+// ── Badges (public) ──
+
+router.get('/api/badge/overall', (_req, res) => {
+  const result = listServices({ enabled: true });
+  if (!result.ok) {
+    return res.status(500).json(result);
+  }
+
+  const services = result.data;
+  const allOperational = services.every(s => s.status === 'operational');
+  const anyMajor = services.some(s => s.status === 'major_outage');
+  const anyPartialOutage = services.some(s => s.status === 'partial_outage');
+  const anyMaintenance = services.every(s => s.status === 'maintenance');
+
+  let overallStatus: ServiceStatus;
+  if (allOperational) overallStatus = 'operational';
+  else if (anyMajor) overallStatus = 'major_outage';
+  else if (anyPartialOutage) overallStatus = 'partial_outage';
+  else if (anyMaintenance) overallStatus = 'maintenance';
+  else overallStatus = 'degraded';
+
+  const label = (_req.query.label as string) || 'status';
+  const svg = generateBadgeSvg(label, overallStatus);
+
+  res.set('Content-Type', 'image/svg+xml');
+  res.set('Cache-Control', 'public, max-age=60');
+  res.send(svg);
+});
+
+router.get('/api/badge/:serviceId', (req, res) => {
+  const result = getService(req.params.serviceId);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+
+  const service = result.data;
+  const label = (req.query.label as string) || service.name;
+  const svg = generateBadgeSvg(label, service.status as ServiceStatus);
+
+  res.set('Content-Type', 'image/svg+xml');
+  res.set('Cache-Control', 'public, max-age=60');
+  res.send(svg);
+});
+
+// ── Embed Widget (public) ──
+
+router.get('/api/embed/widget', (_req, res) => {
+  const result = listServices({ enabled: true });
+  if (!result.ok) {
+    return res.status(500).json(result);
+  }
+
+  const services = result.data;
+  const allOperational = services.every(s => s.status === 'operational');
+  const anyMajor = services.some(s => s.status === 'major_outage');
+  const anyPartialOutage = services.some(s => s.status === 'partial_outage');
+  const anyMaintenance = services.every(s => s.status === 'maintenance');
+
+  let overallStatus: ServiceStatus;
+  if (allOperational) overallStatus = 'operational';
+  else if (anyMajor) overallStatus = 'major_outage';
+  else if (anyPartialOutage) overallStatus = 'partial_outage';
+  else if (anyMaintenance) overallStatus = 'maintenance';
+  else overallStatus = 'degraded';
+
+  const title = (_req.query.title as string) || undefined;
+  const statusPageUrl = (_req.query.statusPageUrl as string) || undefined;
+
+  const html = generateWidgetHtml(
+    services.map(s => ({ id: s.id, name: s.name, status: s.status })),
+    overallStatus,
+    { title, statusPageUrl },
+  );
+
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// ── Webhook Deliveries ──
+
+router.get('/api/webhooks/:id/deliveries', (req, res) => {
+  // Verify webhook exists
+  const webhook = getWebhookById(req.params.id);
+  if (!webhook.ok) {
+    const status = webhook.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(webhook);
+  }
+
+  const limit = parseInt(req.query.limit as string) || 50;
+  const result = getDeliveryHistory(req.params.id, limit);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.post('/api/webhooks/:id/deliveries/:deliveryId/retry', requireAuth, (req: Request<{id: string; deliveryId: string}>, res: Response) => {
+  // Verify webhook exists
+  const webhook = getWebhookById(req.params.id);
+  if (!webhook.ok) {
+    const status = webhook.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(webhook);
+  }
+
+  const result = retryDelivery(req.params.deliveryId);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404
+      : result.error.code === 'INVALID_STATE' ? 400
+      : 500;
+    return res.status(status).json(result);
+  }
   res.json(result);
 });

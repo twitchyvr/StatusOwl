@@ -298,6 +298,68 @@ function runMigrations(db: Database.Database): void {
         INSERT OR IGNORE INTO monitoring_regions (id, name, location, enabled) VALUES ('default', 'Default', 'Local', 1);
       `,
     },
+    {
+      version: 11,
+      sql: `
+        -- Webhook delivery tracking with retry support
+        CREATE TABLE IF NOT EXISTS webhook_deliveries (
+          id TEXT PRIMARY KEY,
+          webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+          event_type TEXT NOT NULL,
+          payload TEXT NOT NULL DEFAULT '{}',
+          status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'success', 'failed', 'dead')),
+          attempts INTEGER NOT NULL DEFAULT 0,
+          max_attempts INTEGER NOT NULL DEFAULT 5,
+          last_attempt_at TEXT,
+          next_retry_at TEXT,
+          response_status INTEGER,
+          response_body TEXT,
+          error_message TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_status ON webhook_deliveries(status, next_retry_at);
+
+        -- Dead letter queue for permanently failed deliveries
+        CREATE TABLE IF NOT EXISTS webhook_dead_letters (
+          id TEXT PRIMARY KEY,
+          delivery_id TEXT NOT NULL REFERENCES webhook_deliveries(id) ON DELETE CASCADE,
+          webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+          event_type TEXT NOT NULL,
+          payload TEXT NOT NULL DEFAULT '{}',
+          error_message TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_webhook_dead_letters_webhook ON webhook_dead_letters(webhook_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_webhook_dead_letters_delivery ON webhook_dead_letters(delivery_id);
+      `,
+    },
+    {
+      version: 12,
+      sql: `
+        -- Assertions DSL: multi-condition health check assertions stored as JSON array
+        ALTER TABLE services ADD COLUMN assertions TEXT;
+      `,
+    },
+    {
+      version: 13,
+      sql: `
+        -- SLA targets per service
+        CREATE TABLE IF NOT EXISTS sla_targets (
+          id TEXT PRIMARY KEY,
+          service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+          uptime_target REAL NOT NULL,
+          response_time_target REAL NOT NULL,
+          evaluation_period TEXT NOT NULL DEFAULT 'monthly',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_sla_targets_service ON sla_targets(service_id);
+      `,
+    },
   ];
 
   const applyMigration = db.transaction((m: { version: number; sql: string }) => {

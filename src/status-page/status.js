@@ -1056,6 +1056,288 @@
     }
   }
 
+  // -------------------------------------------------------------------
+  // Calendar (GitHub contribution-graph style)
+  // -------------------------------------------------------------------
+
+  var API_CALENDAR_URL = '/api/calendar';
+
+  var CALENDAR_COLORS = {
+    4: '#2d6a4f',
+    3: '#52b788',
+    2: '#b7e4c7',
+    1: '#fca311',
+    0: '#e63946',
+  };
+
+  var CALENDAR_CELL_SIZE = 12;
+  var CALENDAR_GAP = 2;
+  var CALENDAR_DAY_LABELS = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
+  var CALENDAR_MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  /**
+   * Fetch overall calendar data from the API.
+   */
+  async function fetchCalendarData(days) {
+    days = days || 90;
+    var url = API_CALENDAR_URL + '?days=' + days;
+    var cached = getCached(url);
+    if (cached) return cached;
+    try {
+      var response = await fetch(url);
+      if (!response.ok) return null;
+      var json = await response.json();
+      if (json && json.ok && json.data) {
+        setCache(url, json.data);
+        return json.data;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Render a GitHub-contribution-graph-style calendar into the given
+   * container element. calendarData is an array of CalendarDay objects
+   * sorted ascending by date.
+   *
+   * Layout:
+   *   - 7 rows (Sun=0 .. Sat=6)
+   *   - N columns (one per week)
+   *   - Day labels on the left (Mon, Wed, Fri)
+   *   - Month labels on top
+   */
+  function renderCalendar(containerId, calendarData) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+
+    clearElement(container);
+
+    if (!calendarData || calendarData.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'calendar-empty';
+      empty.textContent = 'No uptime data available';
+      container.appendChild(empty);
+      return;
+    }
+
+    // Determine the grid layout: need to figure out which column (week)
+    // each day falls in, relative to the first Sunday at or before the
+    // first date in the data.
+
+    var firstDate = new Date(calendarData[0].date + 'T00:00:00');
+    var lastDate = new Date(calendarData[calendarData.length - 1].date + 'T00:00:00');
+
+    // Adjust firstDate back to the preceding Sunday
+    var firstDow = firstDate.getDay(); // 0=Sun
+    var gridStart = new Date(firstDate);
+    gridStart.setDate(gridStart.getDate() - firstDow);
+
+    // Build a map of date -> CalendarDay for fast lookup
+    var dayMap = {};
+    for (var i = 0; i < calendarData.length; i++) {
+      dayMap[calendarData[i].date] = calendarData[i];
+    }
+
+    // How many weeks do we need?
+    var diffMs = lastDate.getTime() - gridStart.getTime();
+    var totalDays = Math.ceil(diffMs / 86400000) + 1;
+    var numWeeks = Math.ceil(totalDays / 7);
+
+    // SVG namespace
+    var ns = 'http://www.w3.org/2000/svg';
+
+    // Calculate dimensions
+    var labelWidth = 30; // space for day labels on the left
+    var monthLabelHeight = 16; // space for month labels on top
+    var svgWidth = labelWidth + numWeeks * (CALENDAR_CELL_SIZE + CALENDAR_GAP);
+    var svgHeight = monthLabelHeight + 7 * (CALENDAR_CELL_SIZE + CALENDAR_GAP);
+
+    // Create wrapper div for horizontal scrolling on mobile
+    var wrapper = document.createElement('div');
+    wrapper.className = 'calendar-grid';
+
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', String(svgWidth));
+    svg.setAttribute('height', String(svgHeight));
+    svg.setAttribute('viewBox', '0 0 ' + svgWidth + ' ' + svgHeight);
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', 'Uptime history calendar showing daily uptime levels');
+
+    // Day labels (Mon, Wed, Fri)
+    for (var row = 0; row < 7; row++) {
+      var labelText = CALENDAR_DAY_LABELS[row];
+      if (!labelText) continue;
+
+      var dayLabel = document.createElementNS(ns, 'text');
+      dayLabel.setAttribute('x', String(labelWidth - 4));
+      dayLabel.setAttribute('y', String(monthLabelHeight + row * (CALENDAR_CELL_SIZE + CALENDAR_GAP) + CALENDAR_CELL_SIZE - 1));
+      dayLabel.setAttribute('text-anchor', 'end');
+      dayLabel.setAttribute('class', 'calendar-day-label');
+      dayLabel.textContent = labelText;
+      svg.appendChild(dayLabel);
+    }
+
+    // Month labels — track which months appear at which column
+    var monthLabelsPlaced = {};
+
+    // Render cells
+    for (var col = 0; col < numWeeks; col++) {
+      for (var r = 0; r < 7; r++) {
+        var dayOffset = col * 7 + r;
+        var cellDate = new Date(gridStart);
+        cellDate.setDate(cellDate.getDate() + dayOffset);
+
+        // Don't render cells beyond the last date
+        if (cellDate > lastDate) continue;
+        // Don't render cells before the first date in our data
+        if (cellDate < firstDate) continue;
+
+        var dateStr = cellDate.toISOString().slice(0, 10);
+        var dayData = dayMap[dateStr];
+
+        // Month label: place at the first column where a month's 1st appears
+        var cellMonth = cellDate.getMonth();
+        var cellDay = cellDate.getDate();
+        if (cellDay <= 7 && r === 0 && !monthLabelsPlaced[cellMonth + '-' + cellDate.getFullYear()]) {
+          monthLabelsPlaced[cellMonth + '-' + cellDate.getFullYear()] = true;
+          var monthLabel = document.createElementNS(ns, 'text');
+          monthLabel.setAttribute('x', String(labelWidth + col * (CALENDAR_CELL_SIZE + CALENDAR_GAP)));
+          monthLabel.setAttribute('y', String(monthLabelHeight - 4));
+          monthLabel.setAttribute('class', 'calendar-month-label');
+          monthLabel.textContent = CALENDAR_MONTH_NAMES[cellMonth];
+          svg.appendChild(monthLabel);
+        }
+
+        var level = dayData ? dayData.level : 4; // Default to excellent for days without data
+        var fillColor = CALENDAR_COLORS[level];
+
+        // If no data exists (no checks), use a neutral gray
+        if (!dayData || dayData.totalChecks === 0) {
+          fillColor = 'var(--color-border, #e2e8f0)';
+        }
+
+        var x = labelWidth + col * (CALENDAR_CELL_SIZE + CALENDAR_GAP);
+        var y = monthLabelHeight + r * (CALENDAR_CELL_SIZE + CALENDAR_GAP);
+
+        var rect = document.createElementNS(ns, 'rect');
+        rect.setAttribute('x', String(x));
+        rect.setAttribute('y', String(y));
+        rect.setAttribute('width', String(CALENDAR_CELL_SIZE));
+        rect.setAttribute('height', String(CALENDAR_CELL_SIZE));
+        rect.setAttribute('rx', '2');
+        rect.setAttribute('ry', '2');
+        rect.setAttribute('fill', fillColor);
+        rect.setAttribute('class', 'calendar-cell');
+        rect.setAttribute('data-date', dateStr);
+
+        // Build tooltip data attributes
+        if (dayData) {
+          rect.setAttribute('data-uptime', dayData.uptimePercent.toFixed(2));
+          rect.setAttribute('data-checks', String(dayData.totalChecks));
+          rect.setAttribute('data-incidents', String(dayData.incidentCount));
+          rect.setAttribute('data-response', dayData.avgResponseTime.toFixed(0));
+        }
+
+        svg.appendChild(rect);
+      }
+    }
+
+    wrapper.appendChild(svg);
+
+    // Tooltip element (shared, repositioned on hover)
+    var tooltip = document.createElement('div');
+    tooltip.className = 'calendar-tooltip';
+    tooltip.style.display = 'none';
+    wrapper.appendChild(tooltip);
+
+    // Event delegation for hover on calendar cells
+    wrapper.addEventListener('mouseover', function (e) {
+      var target = e.target;
+      if (target.tagName !== 'rect' || !target.classList.contains('calendar-cell')) return;
+
+      var date = target.getAttribute('data-date');
+      var uptime = target.getAttribute('data-uptime');
+      var checks = target.getAttribute('data-checks');
+      var incidents = target.getAttribute('data-incidents');
+      var response = target.getAttribute('data-response');
+
+      if (!date) return;
+
+      var lines = [];
+      lines.push(date);
+      if (uptime !== null) {
+        lines.push('Uptime: ' + uptime + '%');
+        lines.push('Checks: ' + checks);
+        if (parseInt(incidents) > 0) {
+          lines.push('Incidents: ' + incidents);
+        }
+        lines.push('Avg response: ' + response + 'ms');
+      } else {
+        lines.push('No data');
+      }
+
+      tooltip.textContent = '';
+      for (var li = 0; li < lines.length; li++) {
+        if (li > 0) {
+          tooltip.appendChild(document.createElement('br'));
+        }
+        tooltip.appendChild(document.createTextNode(lines[li]));
+      }
+
+      // Position tooltip above the cell
+      var rectBounds = target.getBoundingClientRect();
+      var wrapperBounds = wrapper.getBoundingClientRect();
+      var tooltipLeft = rectBounds.left - wrapperBounds.left + rectBounds.width / 2;
+      var tooltipTop = rectBounds.top - wrapperBounds.top - 6;
+
+      tooltip.style.display = 'block';
+      tooltip.style.left = tooltipLeft + 'px';
+      tooltip.style.top = tooltipTop + 'px';
+    });
+
+    wrapper.addEventListener('mouseout', function (e) {
+      var target = e.target;
+      if (target.tagName === 'rect' && target.classList.contains('calendar-cell')) {
+        tooltip.style.display = 'none';
+      }
+    });
+
+    // Legend
+    var legend = document.createElement('div');
+    legend.className = 'calendar-legend';
+
+    var lessLabel = document.createElement('span');
+    lessLabel.className = 'calendar-legend-label';
+    lessLabel.textContent = 'Less';
+    legend.appendChild(lessLabel);
+
+    var levelOrder = [0, 1, 2, 3, 4];
+    for (var lv = 0; lv < levelOrder.length; lv++) {
+      var swatch = document.createElement('span');
+      swatch.className = 'calendar-legend-swatch';
+      swatch.style.backgroundColor = CALENDAR_COLORS[levelOrder[lv]];
+      legend.appendChild(swatch);
+    }
+
+    var moreLabel = document.createElement('span');
+    moreLabel.className = 'calendar-legend-label';
+    moreLabel.textContent = 'More';
+    legend.appendChild(moreLabel);
+
+    container.appendChild(wrapper);
+    container.appendChild(legend);
+  }
+
+  /**
+   * Fetch calendar data and render into the page.
+   */
+  async function loadCalendar() {
+    var data = await fetchCalendarData(90);
+    renderCalendar('uptime-calendar', data);
+  }
+
   async function refreshData() {
     // Clear cache on manual/auto refresh
     responseCache.clear();
@@ -1065,8 +1347,8 @@
 
     // Fetch groups and maintenance first (needed before rendering services)
     await Promise.all([fetchGroups(), fetchMaintenanceWindows()]);
-    // Then fetch status + incidents (status rendering uses groups + maintenance state)
-    await Promise.all([fetchStatus(), fetchIncidents()]);
+    // Then fetch status + incidents + calendar (status rendering uses groups + maintenance state)
+    await Promise.all([fetchStatus(), fetchIncidents(), loadCalendar()]);
 
     if (refreshBtn) refreshBtn.classList.remove('refreshing');
     startRefreshTimer();
@@ -1133,6 +1415,234 @@
     }
   }
 
+  // -------------------------------------------------------------------
+  // Server-Sent Events (SSE) — real-time updates
+  // -------------------------------------------------------------------
+
+  var SSE_URL = '/api/events';
+  var sseSource = null;
+  var sseReconnectDelay = 1000; // start at 1 s
+  var SSE_MAX_RECONNECT_DELAY = 8000; // cap at 8 s
+  var sseReconnectTimer = null;
+  var sseConnected = false;
+
+  /**
+   * Update the SSE connection indicator dot in the header.
+   * Green = connected, red = disconnected.
+   */
+  function updateSseIndicator(connected) {
+    sseConnected = connected;
+    var indicator = document.getElementById('sse-indicator');
+    if (!indicator) return;
+    if (connected) {
+      indicator.classList.add('connected');
+      indicator.classList.remove('disconnected');
+      indicator.title = 'Live updates connected';
+    } else {
+      indicator.classList.remove('connected');
+      indicator.classList.add('disconnected');
+      indicator.title = 'Live updates disconnected — using polling';
+    }
+  }
+
+  /**
+   * Handle a status.change SSE event.
+   * Updates the specific service's status dot and label without a full refresh.
+   */
+  function handleStatusChange(eventData) {
+    if (!eventData || !eventData.serviceId || !eventData.status) return;
+
+    // Update the service in our cached statusData
+    if (statusData && statusData.services) {
+      for (var i = 0; i < statusData.services.length; i++) {
+        if (statusData.services[i].id === eventData.serviceId) {
+          statusData.services[i].status = eventData.status;
+          break;
+        }
+      }
+
+      // Recalculate overall status
+      var services = statusData.services;
+      var allOperational = true;
+      var anyMajor = false;
+      var anyPartial = false;
+
+      for (var j = 0; j < services.length; j++) {
+        if (services[j].status !== 'operational') allOperational = false;
+        if (services[j].status === 'major_outage') anyMajor = true;
+        if (services[j].status === 'partial_outage') anyPartial = true;
+      }
+
+      var overall;
+      if (allOperational) overall = 'operational';
+      else if (anyMajor) overall = 'major_outage';
+      else if (anyPartial) overall = 'partial_outage';
+      else overall = 'degraded';
+
+      statusData.status = overall;
+      renderOverallStatus(overall);
+    }
+
+    // Update the DOM for this specific service
+    // Find all service items and update the matching one
+    var serviceItems = document.querySelectorAll('.service-item');
+    for (var k = 0; k < serviceItems.length; k++) {
+      var nameEl = serviceItems[k].querySelector('.service-name');
+      if (!nameEl) continue;
+
+      // Match by service name from our cached data
+      var matchedService = null;
+      if (statusData && statusData.services) {
+        for (var m = 0; m < statusData.services.length; m++) {
+          if (statusData.services[m].id === eventData.serviceId) {
+            matchedService = statusData.services[m];
+            break;
+          }
+        }
+      }
+
+      if (matchedService && nameEl.textContent === matchedService.name) {
+        var statusDot = serviceItems[k].querySelector('.service-status-dot');
+        var statusLabel = serviceItems[k].querySelector('.service-status-label');
+        if (statusDot) {
+          statusDot.className = 'service-status-dot ' + getStatusColor(eventData.status);
+        }
+        if (statusLabel) {
+          statusLabel.textContent = getStatusLabel(eventData.status);
+        }
+        break;
+      }
+    }
+
+    lastFetchTime = new Date();
+    updateLastUpdated();
+  }
+
+  /**
+   * Handle incident SSE events (created, updated, resolved).
+   * Triggers a full incident refetch to keep timeline data in sync.
+   */
+  function handleIncidentEvent(/* eventData */) {
+    // Refetch incidents to get complete timeline data
+    responseCache.delete(API_INCIDENTS_URL);
+    fetchIncidents();
+  }
+
+  /**
+   * Connect to the SSE event stream.
+   * Sets up handlers for all event types and auto-reconnects on failure.
+   */
+  function connectEventStream() {
+    // Check for EventSource support
+    if (typeof EventSource === 'undefined') {
+      updateSseIndicator(false);
+      return;
+    }
+
+    // Close any existing connection
+    if (sseSource) {
+      sseSource.close();
+      sseSource = null;
+    }
+
+    // Clear any pending reconnect
+    if (sseReconnectTimer) {
+      clearTimeout(sseReconnectTimer);
+      sseReconnectTimer = null;
+    }
+
+    sseSource = new EventSource(SSE_URL);
+
+    sseSource.onopen = function () {
+      updateSseIndicator(true);
+      sseReconnectDelay = 1000; // Reset backoff on successful connection
+    };
+
+    sseSource.onerror = function () {
+      updateSseIndicator(false);
+
+      // EventSource auto-reconnects, but if it's in CLOSED state we do it ourselves
+      if (sseSource && sseSource.readyState === EventSource.CLOSED) {
+        sseSource.close();
+        sseSource = null;
+        scheduleReconnect();
+      }
+    };
+
+    // status.change — update service status in DOM
+    sseSource.addEventListener('status.change', function (e) {
+      try {
+        var data = JSON.parse(e.data);
+        handleStatusChange(data);
+      } catch (err) {
+        // Malformed data — ignore
+      }
+    });
+
+    // incident.created
+    sseSource.addEventListener('incident.created', function (e) {
+      try {
+        var data = JSON.parse(e.data);
+        handleIncidentEvent(data);
+      } catch (err) {
+        // ignore
+      }
+    });
+
+    // incident.updated
+    sseSource.addEventListener('incident.updated', function (e) {
+      try {
+        var data = JSON.parse(e.data);
+        handleIncidentEvent(data);
+      } catch (err) {
+        // ignore
+      }
+    });
+
+    // incident.resolved
+    sseSource.addEventListener('incident.resolved', function (e) {
+      try {
+        var data = JSON.parse(e.data);
+        handleIncidentEvent(data);
+      } catch (err) {
+        // ignore
+      }
+    });
+
+    // maintenance.started / maintenance.ended — refetch maintenance
+    sseSource.addEventListener('maintenance.started', function () {
+      responseCache.delete(API_MAINTENANCE_URL);
+      fetchMaintenanceWindows();
+    });
+
+    sseSource.addEventListener('maintenance.ended', function () {
+      responseCache.delete(API_MAINTENANCE_URL);
+      fetchMaintenanceWindows();
+    });
+
+    // check.completed — could refresh sparklines, but for now just update timestamp
+    sseSource.addEventListener('check.completed', function () {
+      lastFetchTime = new Date();
+      updateLastUpdated();
+    });
+  }
+
+  /**
+   * Schedule an SSE reconnection with exponential backoff.
+   * Delays: 1s, 2s, 4s, 8s (capped).
+   */
+  function scheduleReconnect() {
+    if (sseReconnectTimer) return; // already scheduled
+
+    sseReconnectTimer = setTimeout(function () {
+      sseReconnectTimer = null;
+      connectEventStream();
+    }, sseReconnectDelay);
+
+    // Exponential backoff
+    sseReconnectDelay = Math.min(sseReconnectDelay * 2, SSE_MAX_RECONNECT_DELAY);
+  }
+
   function init() {
     initTheme();
 
@@ -1153,8 +1663,11 @@
       });
     }
 
-    // Initial data fetch
+    // Initial data fetch (polling fallback is always active)
     refreshData();
+
+    // Connect SSE event stream for real-time updates
+    connectEventStream();
   }
 
   // Start

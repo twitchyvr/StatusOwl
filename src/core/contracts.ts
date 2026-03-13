@@ -20,6 +20,25 @@ export function err<T>(code: string, message: string, opts?: { retryable?: boole
   return { ok: false, error: { code, message, retryable: opts?.retryable } };
 }
 
+// ── Assertion DSL ──
+
+export const AssertionSchema = z.object({
+  type: z.enum([
+    'status_code',
+    'header_exists',
+    'header_value',
+    'response_time_lt',
+    'body_contains',
+    'body_regex',
+    'body_json_path',
+    'ssl_days_remaining',
+  ]),
+  expression: z.string(),
+  expectedValue: z.string().optional(),
+  severity: z.enum(['warning', 'critical']),
+});
+export type Assertion = z.infer<typeof AssertionSchema>;
+
 // ── Body Validation ──
 
 export const BodyValidationSchema = z.object({
@@ -46,6 +65,7 @@ export const ServiceSchema = z.object({
   headers: z.record(z.string()).optional(),
   body: z.string().optional(),
   bodyValidation: BodyValidationSchema.optional(),
+  assertions: z.array(AssertionSchema).optional(),
   status: ServiceStatus.default('unknown'),
   enabled: z.boolean().default(true),
   groupId: z.string().uuid().nullable().default(null),
@@ -244,6 +264,63 @@ export const MonitoringRegionSchema = z.object({
   enabled: z.boolean().default(true),
 });
 export type MonitoringRegion = z.infer<typeof MonitoringRegionSchema>;
+
+// ── SLA Target ──
+
+export const EvaluationPeriod = z.enum(['monthly', 'quarterly']);
+export type EvaluationPeriod = z.infer<typeof EvaluationPeriod>;
+
+export const SlaTargetSchema = z.object({
+  id: z.string().uuid(),
+  serviceId: z.string().uuid(),
+  uptimeTarget: z.coerce.number().min(0).max(100),       // e.g. 99.9
+  responseTimeTarget: z.coerce.number().min(0),            // ms, e.g. 500
+  evaluationPeriod: EvaluationPeriod,
+  createdAt: z.string().datetime().optional(),
+  updatedAt: z.string().datetime().optional(),
+});
+export type SlaTarget = z.infer<typeof SlaTargetSchema>;
+
+export const CreateSlaTargetSchema = SlaTargetSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type CreateSlaTarget = z.infer<typeof CreateSlaTargetSchema>;
+
+// ── Health Score ──
+
+export interface HealthScoreBreakdown {
+  uptimeScore: number;
+  responseTimeScore: number;
+  errorRateScore: number;
+  incidentScore: number;
+}
+
+export interface HealthScoreWeights {
+  uptime: number;
+  responseTime: number;
+  errorRate: number;
+  incidents: number;
+}
+
+export interface HealthScore {
+  score: number;
+  breakdown: HealthScoreBreakdown;
+  weights: HealthScoreWeights;
+}
+
+export interface SlaCompliance {
+  target: SlaTarget;
+  actual: {
+    uptimeActual: number;
+    responseTimeActual: number;
+  };
+  compliant: boolean;
+  uptimeActual: number;
+  responseTimeActual: number;
+  period: EvaluationPeriod;
+}
 
 // ── Uptime summary ──
 

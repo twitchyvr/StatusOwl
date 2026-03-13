@@ -10,6 +10,7 @@ export { getLogger, createChildLogger } from './logger.js';
 export { ok, err } from './contracts.js';
 export type {
   Result,
+  Assertion,
   Service,
   CreateService,
   ServiceGroup,
@@ -33,9 +34,16 @@ export type {
   AuditLogEntry,
   Subscription,
   MonitoringRegion,
+  SlaTarget,
+  CreateSlaTarget,
+  HealthScore,
+  HealthScoreBreakdown,
+  HealthScoreWeights,
+  SlaCompliance,
 } from './contracts.js';
 
 export {
+  AssertionSchema,
   ServiceSchema,
   CreateServiceSchema,
   CreateServiceGroupSchema,
@@ -56,4 +64,7 @@ export {
   SubscriptionSchema,
   UptimeReportSchema,
   MonitoringRegionSchema,
+  SlaTargetSchema,
+  CreateSlaTargetSchema,
+  EvaluationPeriod,
 } from './contracts.js';
