@@ -17,7 +17,11 @@ All notable changes to StatusOwl are documented here. This project follows [Sema
 - REST API: full CRUD for services, checks, uptime, incidents, status
 - Public status page: real-time service status, uptime percentages, incident timeline
 - Graceful shutdown: SIGINT/SIGTERM handling, scheduler stop, database close
-- Vitest test suite: 61 tests across 6 modules (config, service-repo, check-repo, incident-repo, incident-detector, checker)
+- Vitest test suite: 69 tests across 7 modules (config, service-repo, check-repo, incident-repo, incident-detector, checker, auth)
+- API key authentication middleware: Bearer header and X-API-Key support, dev mode bypass
+- GitHub Actions CI/CD pipeline: install → type-check → lint → test
+- ESLint with @typescript-eslint for src/ and tests/
+- GitHub issue templates (bug report, feature request) and PR template
 
 ### Fixed
 - Status page uptime field mismatch (`uptime` → `uptimePercent`) causing TypeError crash

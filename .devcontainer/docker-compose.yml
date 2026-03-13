@@ -1,0 +1,13 @@
+services:
+  app:
+    image: node:20
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - node_modules:/workspace/node_modules
+    ports:
+      - "3000:3000"
+    command: sleep infinity
+
+volumes:
+  node_modules:
