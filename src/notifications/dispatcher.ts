@@ -5,6 +5,7 @@
  * - Webhooks (existing)
  * - Slack
  * - Discord
+ * - Email (SMTP)
  */
 
 import { createHmac } from 'node:crypto';
@@ -13,6 +14,7 @@ import type { Incident, Service, WebhookEventType } from '../core/index.js';
 import { getServicesByIds } from '../storage/index.js';
 import { sendSlackNotification } from './slack.js';
 import { sendDiscordNotification } from './discord.js';
+import { sendEmailNotification } from './email.js';
 import { getWebhooksByEvent } from './webhook-repo.js';
 
 const log = createChildLogger('NotificationDispatcher');
@@ -85,6 +87,16 @@ export async function notifyIncident(
       sendDiscordNotification(incident, services, event).catch((e) => {
         const msg = e instanceof Error ? e.message : String(e);
         log.error({ incidentId: incident.id, channel: 'discord', error: msg }, 'Discord notification failed');
+      })
+    );
+  }
+
+  // 4. Send email if configured
+  if (config.smtpHost && config.emailFrom && config.emailTo) {
+    notifications.push(
+      sendEmailNotification(incident, services, event).catch((e) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        log.error({ incidentId: incident.id, channel: 'email', error: msg }, 'Email notification failed');
       })
     );
   }

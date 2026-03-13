@@ -19,6 +19,7 @@ import {
 } from './incident-repo.js';
 import { notifyIncident } from '../notifications/index.js';
 import { isInMaintenanceWindow } from '../maintenance/index.js';
+import { getAlertPolicyByService, isInCooldown, recordAlertTime } from '../alerts/index.js';
 
 const log = createChildLogger('IncidentDetector');
 
@@ -82,6 +83,7 @@ export async function detectIncidents(): Promise<Result<IncidentDetectionResult>
 
 /**
  * Process checks for a single service to detect new incidents or resolutions.
+ * Uses per-service alert policies when available, falling back to defaults.
  */
 async function processServiceChecks(
   serviceId: string,
@@ -89,13 +91,28 @@ async function processServiceChecks(
   db: ReturnType<typeof getDb>
 ): Promise<{ created?: Incident; resolved?: Incident; error?: string }> {
   try {
-    // Get recent checks for this service (enough to detect 3+ consecutive failures)
+    // Load per-service alert policy (if one exists and is enabled)
+    const policyResult = getAlertPolicyByService(serviceId);
+    const policy = policyResult.ok ? policyResult.data : null;
+    const policyEnabled = policy?.enabled ?? true;
+
+    // Determine the effective failure threshold from the policy or fallback
+    const effectiveThreshold = (policy && policyEnabled)
+      ? policy.failureThreshold
+      : CONSECUTIVE_FAILURE_THRESHOLD;
+
+    // Determine the effective cooldown from the policy or fallback (default 0 = no cooldown)
+    const effectiveCooldown = (policy && policyEnabled)
+      ? policy.cooldownMinutes
+      : 0;
+
+    // Get recent checks for this service (enough to detect consecutive failures)
     const recentChecks = db.prepare(`
       SELECT * FROM check_results
       WHERE service_id = ?
       ORDER BY checked_at DESC, ROWID DESC
       LIMIT ?
-    `).all(serviceId, CONSECUTIVE_FAILURE_THRESHOLD + 5) as Record<string, unknown>[];
+    `).all(serviceId, effectiveThreshold + 5) as Record<string, unknown>[];
 
     if (recentChecks.length === 0) {
       return {};
@@ -118,21 +135,30 @@ async function processServiceChecks(
       return {};
     }
 
-    // Rule 1: Create incident if 3+ consecutive failures and no open incident
-    if (failureCount >= CONSECUTIVE_FAILURE_THRESHOLD && !existingIncident) {
+    // Rule 1: Create incident if consecutive failures >= threshold and no open incident
+    if (failureCount >= effectiveThreshold && !existingIncident) {
+      // Check cooldown — suppress duplicate alerts within the cooldown period
+      if (effectiveCooldown > 0 && isInCooldown(serviceId, effectiveCooldown)) {
+        log.debug({ serviceId, serviceName, cooldownMinutes: effectiveCooldown }, 'Service in alert cooldown, skipping incident creation');
+        return {};
+      }
+
       const title = `Service "${serviceName}" is down`;
       const severity = determineSeverity(checks);
-      
+
       const createResult = createIncident(serviceId, title, severity);
-      
+
       if (createResult.ok) {
-        log.info({ serviceId, serviceName, failureCount }, 'Created new incident');
-        
+        log.info({ serviceId, serviceName, failureCount, threshold: effectiveThreshold }, 'Created new incident');
+
+        // Record alert time for cooldown tracking
+        recordAlertTime(serviceId);
+
         // Send notifications
         await notifyIncident(createResult.data, 'created').catch((e) => {
           log.error({ incidentId: createResult.data.id, error: e }, 'Failed to send incident notifications');
         });
-        
+
         return { created: createResult.data };
       } else {
         return { error: `Failed to create incident: ${createResult.error.message}` };
@@ -142,17 +168,17 @@ async function processServiceChecks(
     // Rule 2: Resolve incident if service has recovered
     if (existingIncident && hasRecentSuccess) {
       const resolution = `Service "${serviceName}" has recovered`;
-      
+
       const resolveResult = resolveIncident(db, existingIncident.id, resolution);
-      
+
       if (resolveResult.ok) {
         log.info({ serviceId, serviceName, incidentId: existingIncident.id }, 'Resolved incident');
-        
+
         // Send notifications
         await notifyIncident(resolveResult.data, 'resolved').catch((e) => {
           log.error({ incidentId: resolveResult.data.id, error: e }, 'Failed to send incident notifications');
         });
-        
+
         return { resolved: resolveResult.data };
       } else {
         return { error: `Failed to resolve incident: ${resolveResult.error.message}` };

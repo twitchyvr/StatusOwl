@@ -27,3 +27,9 @@ export {
   sendDiscordNotification,
   formatDiscordEmbed,
 } from './discord.js';
+
+export {
+  sendEmailNotification,
+  formatEmailHtml,
+  formatEmailText,
+} from './email.js';

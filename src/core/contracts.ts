@@ -39,6 +39,7 @@ export const ServiceSchema = z.object({
   name: z.string().min(1).max(200),
   url: z.string().url(),
   method: z.enum(['GET', 'HEAD', 'POST']).default('GET'),
+  checkType: z.enum(['http', 'tcp', 'dns']).default('http'),
   expectedStatus: z.coerce.number().default(200),
   checkInterval: z.coerce.number().min(10).max(3600).default(60), // seconds
   timeout: z.coerce.number().min(1).max(60).default(10),           // seconds
@@ -162,6 +163,31 @@ export const CreateMaintenanceWindowSchema = MaintenanceWindowSchema.omit({
   createdAt: true,
 });
 export type CreateMaintenanceWindow = z.infer<typeof CreateMaintenanceWindowSchema>;
+
+// ── Alert Policy ──
+
+export const AlertPolicySchema = z.object({
+  id: z.string().uuid(),
+  serviceId: z.string().uuid(),
+  /** Number of consecutive failures before creating incident (default: 3) */
+  failureThreshold: z.coerce.number().min(1).max(100).default(3),
+  /** Response time threshold in ms — alert if p95 exceeds this */
+  responseTimeThresholdMs: z.coerce.number().min(0).nullable().default(null),
+  /** Cooldown period in minutes — suppress duplicate alerts */
+  cooldownMinutes: z.coerce.number().min(0).max(1440).default(30),
+  /** Whether this policy is active */
+  enabled: z.boolean().default(true),
+  createdAt: z.string().datetime().optional(),
+  updatedAt: z.string().datetime().optional(),
+});
+export type AlertPolicy = z.infer<typeof AlertPolicySchema>;
+
+export const CreateAlertPolicySchema = AlertPolicySchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type CreateAlertPolicy = z.infer<typeof CreateAlertPolicySchema>;
 
 // ── Uptime summary ──
 

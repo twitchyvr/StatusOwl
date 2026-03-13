@@ -7,6 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from './database.js';
 import { ok, err, createChildLogger } from '../core/index.js';
+import { decodeCursor } from '../api/pagination.js';
 import type { Result, Service, CreateService, ServiceStatus, BodyValidation } from '../core/index.js';
 
 const log = createChildLogger('ServiceRepo');
@@ -18,13 +19,14 @@ export function createService(input: CreateService): Result<Service> {
     const now = new Date().toISOString();
 
     db.prepare(`
-      INSERT INTO services (id, name, url, method, expected_status, check_interval, timeout, headers, body, body_validation, status, enabled, group_id, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?, ?, ?, ?)
+      INSERT INTO services (id, name, url, method, check_type, expected_status, check_interval, timeout, headers, body, body_validation, status, enabled, group_id, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?, ?, ?, ?)
     `).run(
       id,
       input.name,
       input.url,
       input.method ?? 'GET',
+      input.checkType ?? 'http',
       input.expectedStatus ?? 200,
       input.checkInterval ?? 60,
       input.timeout ?? 10,
@@ -91,6 +93,71 @@ export function listServices(opts?: { enabled?: boolean; groupId?: string | null
 }
 
 /**
+ * List services with cursor-based pagination and filtering.
+ * Returns limit+1 rows so the caller can determine if there are more results.
+ */
+export function listServicesPaginated(opts?: {
+  enabled?: boolean;
+  status?: string;
+  groupId?: string;
+  cursor?: string;
+  limit?: number;
+}): Result<{ services: Service[]; total: number }> {
+  try {
+    const db = getDb();
+    const limit = opts?.limit ?? 20;
+
+    // Build filter conditions (shared between count and data queries)
+    const filterConditions: string[] = [];
+    const filterParams: unknown[] = [];
+
+    if (opts?.enabled !== undefined) {
+      filterConditions.push('enabled = ?');
+      filterParams.push(opts.enabled ? 1 : 0);
+    }
+    if (opts?.status) {
+      filterConditions.push('status = ?');
+      filterParams.push(opts.status);
+    }
+    if (opts?.groupId) {
+      filterConditions.push('group_id = ?');
+      filterParams.push(opts.groupId);
+    }
+
+    // Count total matching the filters (without cursor/limit)
+    const countWhere = filterConditions.length > 0 ? `WHERE ${filterConditions.join(' AND ')}` : '';
+    const totalRow = db.prepare(
+      `SELECT COUNT(*) as count FROM services ${countWhere}`
+    ).get(...filterParams) as { count: number };
+
+    // Build data query conditions (filters + cursor)
+    const dataConditions = [...filterConditions];
+    const dataParams = [...filterParams];
+
+    if (opts?.cursor) {
+      const decoded = decodeCursor(opts.cursor);
+      if (decoded) {
+        dataConditions.push('(created_at < ? OR (created_at = ? AND id > ?))');
+        dataParams.push(decoded.sortValue, decoded.sortValue, decoded.id);
+      }
+    }
+
+    const dataWhere = dataConditions.length > 0 ? `WHERE ${dataConditions.join(' AND ')}` : '';
+
+    // Fetch limit + 1 to check if there are more results
+    const rows = db.prepare(
+      `SELECT * FROM services ${dataWhere} ORDER BY created_at DESC, id ASC LIMIT ?`
+    ).all(...dataParams, limit + 1) as Record<string, unknown>[];
+
+    return ok({ services: rows.map(rowToService), total: totalRow.count });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    log.error({ error: msg }, 'Failed to list services (paginated)');
+    return err('DB_ERROR', msg);
+  }
+}
+
+/**
  * Get multiple services by their IDs.
  */
 export function getServicesByIds(ids: string[]): Result<Service[]> {
@@ -121,6 +188,7 @@ export function updateService(id: string, updates: Partial<CreateService>): Resu
     if (updates.name !== undefined) { fields.push('name = ?'); params.push(updates.name); }
     if (updates.url !== undefined) { fields.push('url = ?'); params.push(updates.url); }
     if (updates.method !== undefined) { fields.push('method = ?'); params.push(updates.method); }
+    if (updates.checkType !== undefined) { fields.push('check_type = ?'); params.push(updates.checkType); }
     if (updates.expectedStatus !== undefined) { fields.push('expected_status = ?'); params.push(updates.expectedStatus); }
     if (updates.checkInterval !== undefined) { fields.push('check_interval = ?'); params.push(updates.checkInterval); }
     if (updates.timeout !== undefined) { fields.push('timeout = ?'); params.push(updates.timeout); }
@@ -198,6 +266,7 @@ function rowToService(row: Record<string, unknown>): Service {
     name: row.name as string,
     url: row.url as string,
     method: (row.method as 'GET' | 'HEAD' | 'POST') ?? 'GET',
+    checkType: (row.check_type as 'http' | 'tcp' | 'dns') ?? 'http',
     expectedStatus: row.expected_status as number,
     checkInterval: row.check_interval as number,
     timeout: row.timeout as number,

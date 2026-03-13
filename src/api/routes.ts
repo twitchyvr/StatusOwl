@@ -5,8 +5,8 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { CreateServiceSchema, CreateServiceGroupSchema, CreateMaintenanceWindowSchema } from '../core/index.js';
-import { createService, getService, listServices, updateService, deleteService } from '../storage/index.js';
+import { CreateServiceSchema, CreateServiceGroupSchema, CreateMaintenanceWindowSchema, CreateAlertPolicySchema } from '../core/index.js';
+import { createService, getService, listServices, listServicesPaginated, updateService, deleteService } from '../storage/index.js';
 import { getRecentChecks, getUptimeSummary, getDailyHistory, getLatestSslCheck, getSslHistory } from '../storage/index.js';
 import { getPercentiles } from '../monitors/percentile-aggregator.js';
 import { createGroup, getGroup, listGroups, updateGroup, deleteGroup } from '../storage/index.js';
@@ -25,6 +25,16 @@ import {
 } from '../incidents/index.js';
 import { getDb } from '../storage/database.js';
 import { requireAuth } from './auth.js';
+import { buildPaginatedResponse, decodeCursor } from './pagination.js';
+import { registerClient, requestGrant, introspectToken, revokeToken, rotateToken } from '../auth/index.js';
+import {
+  createAlertPolicy,
+  getAlertPolicy,
+  getAlertPolicyByService,
+  listAlertPolicies,
+  updateAlertPolicy,
+  deleteAlertPolicy,
+} from '../alerts/index.js';
 
 // ── In-memory rate limiter (sliding window) ──
 
@@ -96,6 +106,64 @@ export const router = Router();
 
 // Apply rate limiting to all API routes
 router.use(rateLimit);
+
+// ── GNAP Authorization ──
+
+router.post('/api/auth/register', requireAuth, (req: Request, res: Response) => {
+  const { clientId, secret } = req.body;
+  if (!clientId || !secret) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'clientId and secret are required' } });
+  }
+  const result = registerClient(clientId, secret);
+  if (!result.ok) return res.status(500).json(result);
+  res.status(201).json(result);
+});
+
+router.post('/api/auth/grant', (req: Request, res: Response) => {
+  const { client, accessScopes, resources, clientSecret } = req.body;
+  if (!client || !accessScopes || !clientSecret) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'client, accessScopes, and clientSecret are required' } });
+  }
+  const result = requestGrant({ client, accessScopes, resources }, clientSecret);
+  if (!result.ok) {
+    const status = result.error.code === 'UNAUTHORIZED' ? 401 : 400;
+    return res.status(status).json(result);
+  }
+  res.status(200).json(result);
+});
+
+router.post('/api/auth/introspect', (req: Request, res: Response) => {
+  const { token } = req.body;
+  if (!token) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'token is required' } });
+  }
+  const result = introspectToken(token);
+  if (!result.ok) return res.status(500).json(result);
+  res.json({ ok: true, data: { active: result.data !== null, token: result.data } });
+});
+
+router.post('/api/auth/revoke', (req: Request, res: Response) => {
+  const { token } = req.body;
+  if (!token) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'token is required' } });
+  }
+  const result = revokeToken(token);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.post('/api/auth/rotate', (req: Request, res: Response) => {
+  const { token } = req.body;
+  if (!token) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'token is required' } });
+  }
+  const result = rotateToken(token);
+  if (!result.ok) return res.status(500).json(result);
+  if (!result.data) {
+    return res.status(404).json({ ok: false, error: { code: 'NOT_FOUND', message: 'Token not found or expired' } });
+  }
+  res.json(result);
+});
 
 // ── Services ──
 
@@ -414,4 +482,151 @@ router.post('/api/incidents/:id/update', requireAuth, (req: Request<{id: string}
   }
 
   res.json(result);
+});
+
+// ── Alert Policies ──
+
+router.get('/api/alert-policies', (_req, res) => {
+  const result = listAlertPolicies();
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.get('/api/alert-policies/:id', (req, res) => {
+  const result = getAlertPolicy(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+router.get('/api/services/:id/alert-policy', (req, res) => {
+  const result = getAlertPolicyByService(req.params.id);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.post('/api/alert-policies', requireAuth, (req: Request, res: Response) => {
+  const parsed = CreateAlertPolicySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: parsed.error.message } });
+  }
+
+  const result = createAlertPolicy(parsed.data);
+  if (!result.ok) return res.status(500).json(result);
+  res.status(201).json(result);
+});
+
+router.patch('/api/alert-policies/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const UpdateSchema = CreateAlertPolicySchema.partial();
+  const parsed = UpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: parsed.error.message } });
+  }
+
+  const result = updateAlertPolicy(req.params.id, parsed.data);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+router.delete('/api/alert-policies/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const result = deleteAlertPolicy(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+// ── V2 Paginated Endpoints ──
+
+router.get('/api/v2/services', (req, res) => {
+  const cursor = req.query.cursor as string | undefined;
+  const limit = parseInt(req.query.limit as string) || 20;
+  const status = req.query.status as string | undefined;
+  const groupId = req.query.groupId as string | undefined;
+  const enabled = req.query.enabled === undefined ? undefined : req.query.enabled === 'true';
+
+  const result = listServicesPaginated({ cursor, limit, status, groupId, enabled });
+  if (!result.ok) return res.status(500).json(result);
+
+  const { services, total } = result.data;
+  const response = buildPaginatedResponse(services, limit, (s) => s.createdAt ?? '', total);
+  res.json(response);
+});
+
+router.get('/api/v2/incidents', (req, res) => {
+  const cursor = req.query.cursor as string | undefined;
+  const limit = parseInt(req.query.limit as string) || 20;
+  const statusFilter = req.query.status as string | undefined;
+  const serviceId = req.query.serviceId as string | undefined;
+
+  try {
+    const db = getDb();
+
+    // Build filter conditions
+    const filterConditions: string[] = [];
+    const filterParams: unknown[] = [];
+
+    if (statusFilter) {
+      filterConditions.push('i.status = ?');
+      filterParams.push(statusFilter);
+    }
+    if (serviceId) {
+      filterConditions.push('i.id IN (SELECT incident_id FROM incident_services WHERE service_id = ?)');
+      filterParams.push(serviceId);
+    }
+
+    // Count total matching the filters
+    const countWhere = filterConditions.length > 0 ? `WHERE ${filterConditions.join(' AND ')}` : '';
+    const totalRow = db.prepare(
+      `SELECT COUNT(*) as count FROM incidents i ${countWhere}`
+    ).get(...filterParams) as { count: number };
+
+    // Add cursor condition for data query
+    const dataConditions = [...filterConditions];
+    const dataParams = [...filterParams];
+
+    if (cursor) {
+      const decoded = decodeCursor(cursor);
+      if (decoded) {
+        dataConditions.push('(i.created_at < ? OR (i.created_at = ? AND i.id > ?))');
+        dataParams.push(decoded.sortValue, decoded.sortValue, decoded.id);
+      }
+    }
+
+    const dataWhere = dataConditions.length > 0 ? `WHERE ${dataConditions.join(' AND ')}` : '';
+    const rows = db.prepare(
+      `SELECT i.* FROM incidents i ${dataWhere} ORDER BY i.created_at DESC, i.id ASC LIMIT ?`
+    ).all(...dataParams, limit + 1) as Record<string, unknown>[];
+
+    // Map rows to incident objects with service IDs
+    const incidents = rows.map((row) => {
+      const serviceRows = db.prepare(
+        'SELECT service_id FROM incident_services WHERE incident_id = ?'
+      ).all(row.id as string) as Record<string, unknown>[];
+
+      return {
+        id: row.id as string,
+        title: row.title as string,
+        severity: row.severity as string,
+        status: row.status as string,
+        serviceIds: serviceRows.map((r) => r.service_id as string),
+        message: (row.message as string) ?? '',
+        createdAt: row.created_at as string,
+        updatedAt: row.updated_at as string,
+        resolvedAt: (row.resolved_at as string) ?? null,
+      };
+    });
+
+    const response = buildPaginatedResponse(incidents, limit, (inc) => inc.createdAt ?? '', totalRow.count);
+    res.json(response);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ ok: false, error: { code: 'DB_ERROR', message: msg } });
+  }
 });

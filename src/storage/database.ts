@@ -192,6 +192,33 @@ function runMigrations(db: Database.Database): void {
         );
       `,
     },
+    {
+      version: 4,
+      sql: `
+        ALTER TABLE services ADD COLUMN check_type TEXT NOT NULL DEFAULT 'http';
+      `,
+    },
+    {
+      version: 5,
+      sql: `
+        CREATE TABLE IF NOT EXISTS alert_policies (
+          id TEXT PRIMARY KEY,
+          service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+          failure_threshold INTEGER NOT NULL DEFAULT 3,
+          response_time_threshold_ms REAL,
+          cooldown_minutes INTEGER NOT NULL DEFAULT 30,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_policies_service ON alert_policies(service_id);
+
+        CREATE TABLE IF NOT EXISTS alert_cooldowns (
+          service_id TEXT PRIMARY KEY REFERENCES services(id) ON DELETE CASCADE,
+          last_alert_at TEXT NOT NULL
+        );
+      `,
+    },
   ];
 
   const applyMigration = db.transaction((m: { version: number; sql: string }) => {

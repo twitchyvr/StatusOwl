@@ -8,19 +8,21 @@ StatusOwl monitors HTTP endpoints, tracks incidents, displays uptime history, an
 
 ## Features
 
-- **Endpoint Monitoring** — HTTP/HTTPS health checks with configurable intervals, timeouts, and expected status codes
+- **Multi-Protocol Monitoring** — HTTP/HTTPS, TCP port, and DNS resolution health checks
 - **Body Validation** — Response body assertions: substring match, regex, JSON path extraction
 - **SSL Certificate Monitoring** — TLS certificate expiry tracking with warning/critical alert levels
 - **Response Time Percentiles** — Hourly p50/p95/p99 aggregation for latency analysis
-- **Automatic Incident Detection** — Creates incidents after 3 consecutive failures, auto-resolves on recovery
+- **GNAP Authorization** — RFC 9635 compliant auth with token grants, scopes, rotation, and introspection
+- **Configurable Alert Policies** — Per-service failure thresholds, response time alerts, cooldown periods
+- **Automatic Incident Detection** — Creates incidents based on alert policy thresholds, auto-resolves on recovery
 - **Maintenance Windows** — Scheduled maintenance periods that suppress incident detection
 - **Service Groups** — Organize services into logical groups for the status page
 - **Incident Timeline** — Full audit trail with status progression (investigating → identified → monitoring → resolved)
-- **Public Status Page** — Real-time service status, uptime percentages, incident timeline
+- **Public Status Page** — SSL badges, response time sparklines, maintenance banners, group organization
 - **Uptime Tracking** — 90-day daily uptime history with aggregation background job
-- **Webhook Alerts** — HMAC-SHA256 signed webhook delivery with retry and timeout
-- **Notification Channels** — Slack (Block Kit) and Discord (rich embeds) integration
-- **RESTful API** — Full CRUD for services, groups, incidents, maintenance windows, and monitoring data
+- **Notification Channels** — Email (SMTP), Slack (Block Kit), Discord (rich embeds), webhooks (HMAC-SHA256)
+- **Paginated API** — Cursor-based pagination with filtering on `/api/v2/` endpoints
+- **RESTful API** — Full CRUD for services, groups, incidents, maintenance windows, alert policies, and auth
 - **Graceful Shutdown** — Proper signal handling, scheduler cleanup, database close
 
 ## Tech Stack
@@ -41,10 +43,12 @@ src/
   core/            # Config (Zod), logger (Pino), contracts (Result pattern, types)
   storage/         # SQLite database, service-repo, check-repo, group-repo, ssl-repo
   monitors/        # Health checker, scheduler, SSL checker, body validator, percentile/daily aggregators
-  incidents/       # Incident repo, auto-detector (3-failure threshold)
+  incidents/       # Incident repo, auto-detector (configurable thresholds)
+  alerts/          # Alert policy repo, cooldown management
   maintenance/     # Maintenance window repo, active window detection
-  notifications/   # Webhook repo, Slack/Discord formatters, event dispatcher
-  api/             # Express REST routes with rate limiting + auth
+  auth/            # GNAP authorization (RFC 9635), token management
+  notifications/   # Webhook repo, Slack/Discord/Email formatters, event dispatcher
+  api/             # Express REST routes with rate limiting, auth, pagination
   status-page/     # Public HTML/CSS/JS status page
   server.ts        # Entry point
 ```
@@ -109,6 +113,22 @@ curl -X POST http://localhost:3000/api/services \
 | POST | `/api/maintenance-windows` | Create a maintenance window |
 | GET | `/api/maintenance-windows/:id` | Get window by ID |
 | DELETE | `/api/maintenance-windows/:id` | Delete a maintenance window |
+| **Alert Policies** | | |
+| GET | `/api/alert-policies` | List all alert policies |
+| POST | `/api/alert-policies` | Create an alert policy |
+| GET | `/api/alert-policies/:id` | Get policy by ID |
+| PATCH | `/api/alert-policies/:id` | Update a policy |
+| DELETE | `/api/alert-policies/:id` | Delete a policy |
+| GET | `/api/services/:id/alert-policy` | Get policy for a service |
+| **GNAP Auth** | | |
+| POST | `/api/auth/register` | Register a GNAP client |
+| POST | `/api/auth/grant` | Request an access token |
+| POST | `/api/auth/introspect` | Introspect a token |
+| POST | `/api/auth/revoke` | Revoke a token |
+| POST | `/api/auth/rotate` | Rotate a token |
+| **Paginated (v2)** | | |
+| GET | `/api/v2/services` | Paginated services with filtering |
+| GET | `/api/v2/incidents` | Paginated incidents with filtering |
 
 ## Configuration
 
@@ -125,6 +145,15 @@ All settings via environment variables with sensible defaults:
 | `MAX_RETRIES` | `3` | Max check retries |
 | `SITE_NAME` | `StatusOwl` | Status page title |
 | `SITE_DESCRIPTION` | `Service Status` | Status page subtitle |
+| `STATUSOWL_API_KEY` | — | API key for mutation endpoints |
+| `STATUSOWL_SLACK_WEBHOOK` | — | Slack incoming webhook URL |
+| `STATUSOWL_DISCORD_WEBHOOK` | — | Discord webhook URL |
+| `STATUSOWL_SMTP_HOST` | — | SMTP server hostname |
+| `STATUSOWL_SMTP_PORT` | `587` | SMTP server port |
+| `STATUSOWL_SMTP_USER` | — | SMTP username |
+| `STATUSOWL_SMTP_PASS` | — | SMTP password |
+| `STATUSOWL_EMAIL_FROM` | — | Sender email address |
+| `STATUSOWL_EMAIL_TO` | — | Recipient emails (comma-separated) |
 
 ## Scripts
 

@@ -31,6 +31,15 @@ const ConfigSchema = z.object({
   // External notifications
   slackWebhook: z.string().url().optional(),
   discordWebhook: z.string().url().optional(),
+
+  // Email notifications (SMTP)
+  smtpHost: z.string().optional(),
+  smtpPort: z.coerce.number().default(587),
+  smtpSecure: z.boolean().default(false),
+  smtpUser: z.string().optional(),
+  smtpPass: z.string().optional(),
+  emailFrom: z.string().email().optional(),
+  emailTo: z.string().optional(), // comma-separated list
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -55,6 +64,13 @@ export function loadConfig(): Config {
     webhookBackoffMs: process.env.WEBHOOK_BACKOFF_MS,
     slackWebhook: process.env.STATUSOWL_SLACK_WEBHOOK,
     discordWebhook: process.env.STATUSOWL_DISCORD_WEBHOOK,
+    smtpHost: process.env.STATUSOWL_SMTP_HOST,
+    smtpPort: process.env.STATUSOWL_SMTP_PORT,
+    smtpSecure: process.env.STATUSOWL_SMTP_SECURE === 'true',
+    smtpUser: process.env.STATUSOWL_SMTP_USER,
+    smtpPass: process.env.STATUSOWL_SMTP_PASS,
+    emailFrom: process.env.STATUSOWL_EMAIL_FROM,
+    emailTo: process.env.STATUSOWL_EMAIL_TO,
   });
 
   return _config;
