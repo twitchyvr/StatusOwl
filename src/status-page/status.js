@@ -10,12 +10,16 @@
   // Configuration
   var API_STATUS_URL = '/api/status';
   var API_INCIDENTS_URL = '/api/incidents';
+  var API_MAINTENANCE_URL = '/api/maintenance-windows?active=true';
+  var API_GROUPS_URL = '/api/groups';
   var REFRESH_INTERVAL = 60000; // 60 seconds
   var CACHE_TTL_MS = 10000; // 10 seconds cache
 
   // State
   var statusData = null;
   var incidentsData = null;
+  var maintenanceWindows = [];
+  var groupsData = [];
   var countdownInterval = null;
   var secondsUntilRefresh = REFRESH_INTERVAL / 1000;
   var lastFetchTime = null;
@@ -166,6 +170,415 @@
     });
   }
 
+  // -------------------------------------------------------------------
+  // SSL Badge helpers
+  // -------------------------------------------------------------------
+
+  /**
+   * Determine SSL status class based on certificate data.
+   * Returns one of: 'ssl-ok', 'ssl-warning', 'ssl-critical', 'ssl-unknown'
+   */
+  function getSslClass(ssl) {
+    if (!ssl || !ssl.valid) return ssl ? 'ssl-critical' : 'ssl-unknown';
+    var daysUntilExpiry = ssl.daysUntilExpiry != null ? ssl.daysUntilExpiry : Infinity;
+    if (daysUntilExpiry < 7) return 'ssl-critical';
+    if (daysUntilExpiry <= 30) return 'ssl-warning';
+    return 'ssl-ok';
+  }
+
+  /**
+   * Build the tooltip text for an SSL badge.
+   */
+  function getSslTooltip(ssl) {
+    if (!ssl) return 'No SSL data';
+    if (!ssl.valid) return 'SSL invalid or expired';
+    var days = ssl.daysUntilExpiry != null ? ssl.daysUntilExpiry : '?';
+    var expiry = ssl.expiresAt ? formatDate(ssl.expiresAt) : 'unknown';
+    return 'SSL valid — expires ' + expiry + ' (' + days + ' days)';
+  }
+
+  /**
+   * Create an SSL badge DOM element (lock icon SVG with color class + tooltip).
+   */
+  function createSslBadge(ssl) {
+    var ns = 'http://www.w3.org/2000/svg';
+    var cssClass = getSslClass(ssl);
+
+    var wrapper = document.createElement('span');
+    wrapper.className = 'ssl-badge ' + cssClass;
+
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '16');
+    svg.setAttribute('height', '16');
+    svg.setAttribute('aria-hidden', 'true');
+
+    var path = document.createElementNS(ns, 'path');
+    path.setAttribute('d',
+      'M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 ' +
+      '2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 ' +
+      '2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z');
+    svg.appendChild(path);
+    wrapper.appendChild(svg);
+
+    // Tooltip
+    var tooltip = document.createElement('span');
+    tooltip.className = 'ssl-tooltip';
+    tooltip.textContent = getSslTooltip(ssl);
+    wrapper.appendChild(tooltip);
+
+    return wrapper;
+  }
+
+  /**
+   * Fetch SSL data for a single service. Returns null on failure.
+   */
+  async function fetchSslData(serviceId) {
+    var url = '/api/services/' + serviceId + '/ssl';
+    var cached = getCached(url);
+    if (cached) return cached;
+    try {
+      var response = await fetch(url);
+      if (!response.ok) return null;
+      var data = await response.json();
+      if (data && data.ok && data.data) {
+        setCache(url, data.data);
+        return data.data;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Fetch SSL data for all services in parallel.
+   */
+  async function fetchAllSslData(serviceIds) {
+    var results = {};
+    var promises = serviceIds.map(function (id) {
+      return fetchSslData(id).then(function (data) {
+        results[id] = data;
+      });
+    });
+    await Promise.all(promises);
+    return results;
+  }
+
+  // -------------------------------------------------------------------
+  // Response-time sparkline helpers
+  // -------------------------------------------------------------------
+
+  /**
+   * Fetch percentile data for a single service. Returns null on failure.
+   */
+  async function fetchPercentileData(serviceId) {
+    var url = '/api/services/' + serviceId + '/percentiles?hours=24';
+    var cached = getCached(url);
+    if (cached) return cached;
+    try {
+      var response = await fetch(url);
+      if (!response.ok) return null;
+      var data = await response.json();
+      if (data && data.ok && data.data) {
+        setCache(url, data.data);
+        return data.data;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Fetch percentile data for all services in parallel.
+   */
+  async function fetchAllPercentileData(serviceIds) {
+    var results = {};
+    var promises = serviceIds.map(function (id) {
+      return fetchPercentileData(id).then(function (data) {
+        results[id] = data;
+      });
+    });
+    await Promise.all(promises);
+    return results;
+  }
+
+  /**
+   * Pick sparkline color based on the average p50 value.
+   */
+  function sparklineColor(p50Values) {
+    if (!p50Values || p50Values.length === 0) return 'var(--color-text-secondary)';
+    var sum = 0;
+    for (var i = 0; i < p50Values.length; i++) sum += p50Values[i];
+    var avg = sum / p50Values.length;
+    if (avg > 500) return 'var(--color-outage)';
+    if (avg > 200) return 'var(--color-degraded)';
+    return 'var(--color-operational)';
+  }
+
+  /**
+   * Build an SVG polyline path string from an array of numeric values.
+   * Maps values into the given width x height viewport.
+   */
+  function buildSparklinePath(values, width, height, padding) {
+    if (!values || values.length === 0) return '';
+    padding = padding || 1;
+    var maxVal = 0;
+    for (var i = 0; i < values.length; i++) {
+      if (values[i] > maxVal) maxVal = values[i];
+    }
+    if (maxVal === 0) maxVal = 1; // avoid division by zero
+
+    var usableW = width - padding * 2;
+    var usableH = height - padding * 2;
+    var step = values.length > 1 ? usableW / (values.length - 1) : 0;
+
+    var points = [];
+    for (var j = 0; j < values.length; j++) {
+      var x = padding + j * step;
+      var y = padding + usableH - (values[j] / maxVal) * usableH;
+      points.push(x.toFixed(1) + ',' + y.toFixed(1));
+    }
+    return points.join(' ');
+  }
+
+  /**
+   * Create an inline SVG sparkline element from percentile data.
+   * Shows p50 as a solid line and p95 as a faded overlay.
+   */
+  function createSparkline(percentileData) {
+    var container = document.createElement('span');
+    container.className = 'sparkline-container';
+
+    // Extract p50 and p95 arrays from the data
+    var buckets = (percentileData && percentileData.buckets) ? percentileData.buckets : [];
+    if (buckets.length === 0) {
+      var empty = document.createElement('span');
+      empty.className = 'sparkline-empty';
+      empty.textContent = 'No data';
+      container.appendChild(empty);
+      return container;
+    }
+
+    var p50Values = [];
+    var p95Values = [];
+    for (var i = 0; i < buckets.length; i++) {
+      p50Values.push(typeof buckets[i].p50 === 'number' ? buckets[i].p50 : 0);
+      p95Values.push(typeof buckets[i].p95 === 'number' ? buckets[i].p95 : 0);
+    }
+
+    var W = 120;
+    var H = 30;
+    var ns = 'http://www.w3.org/2000/svg';
+
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', String(W));
+    svg.setAttribute('height', String(H));
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.setAttribute('aria-label', 'Response time sparkline');
+    svg.setAttribute('role', 'img');
+
+    // p95 line (faded)
+    var p95Path = buildSparklinePath(p95Values, W, H);
+    if (p95Path) {
+      var p95Line = document.createElementNS(ns, 'polyline');
+      p95Line.setAttribute('points', p95Path);
+      p95Line.setAttribute('fill', 'none');
+      p95Line.setAttribute('stroke', sparklineColor(p95Values));
+      p95Line.setAttribute('stroke-opacity', '0.25');
+      p95Line.setAttribute('stroke-width', '1');
+      p95Line.setAttribute('stroke-linejoin', 'round');
+      svg.appendChild(p95Line);
+    }
+
+    // p50 line (solid)
+    var p50Path = buildSparklinePath(p50Values, W, H);
+    if (p50Path) {
+      var p50Line = document.createElementNS(ns, 'polyline');
+      p50Line.setAttribute('points', p50Path);
+      p50Line.setAttribute('fill', 'none');
+      p50Line.setAttribute('stroke', sparklineColor(p50Values));
+      p50Line.setAttribute('stroke-opacity', '1');
+      p50Line.setAttribute('stroke-width', '1.5');
+      p50Line.setAttribute('stroke-linejoin', 'round');
+      svg.appendChild(p50Line);
+    }
+
+    container.appendChild(svg);
+    return container;
+  }
+
+  // -------------------------------------------------------------------
+  // Maintenance helpers
+  // -------------------------------------------------------------------
+
+  /**
+   * Fetch active maintenance windows.
+   */
+  async function fetchMaintenanceWindows() {
+    try {
+      var cached = getCached(API_MAINTENANCE_URL);
+      var data;
+      if (cached) {
+        data = cached;
+      } else {
+        var response = await fetch(API_MAINTENANCE_URL);
+        if (!response.ok) return;
+        data = await response.json();
+        setCache(API_MAINTENANCE_URL, data);
+      }
+      if (data && data.ok) {
+        maintenanceWindows = data.data || [];
+      } else {
+        maintenanceWindows = [];
+      }
+    } catch (e) {
+      maintenanceWindows = [];
+    }
+    renderMaintenanceBanner();
+  }
+
+  /**
+   * Render the maintenance banner at the top of the page.
+   */
+  function renderMaintenanceBanner() {
+    var banner = document.getElementById('maintenance-banner');
+    if (!banner) return;
+
+    if (!maintenanceWindows || maintenanceWindows.length === 0) {
+      banner.style.display = 'none';
+      clearElement(banner);
+      return;
+    }
+
+    banner.style.display = 'flex';
+    clearElement(banner);
+
+    // Wrench icon
+    var ns = 'http://www.w3.org/2000/svg';
+    var iconSvg = document.createElementNS(ns, 'svg');
+    iconSvg.setAttribute('class', 'maintenance-banner-icon');
+    iconSvg.setAttribute('viewBox', '0 0 24 24');
+    iconSvg.setAttribute('fill', 'none');
+    iconSvg.setAttribute('stroke', 'currentColor');
+    iconSvg.setAttribute('stroke-width', '2');
+    iconSvg.setAttribute('stroke-linecap', 'round');
+    iconSvg.setAttribute('stroke-linejoin', 'round');
+    iconSvg.setAttribute('aria-hidden', 'true');
+    var wrenchPath = document.createElementNS(ns, 'path');
+    wrenchPath.setAttribute('d',
+      'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 ' +
+      '7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z');
+    iconSvg.appendChild(wrenchPath);
+    banner.appendChild(iconSvg);
+
+    var itemsContainer = document.createElement('div');
+    itemsContainer.className = 'maintenance-banner-items';
+
+    for (var i = 0; i < maintenanceWindows.length; i++) {
+      var mw = maintenanceWindows[i];
+      var item = document.createElement('div');
+      item.className = 'maintenance-banner-item';
+
+      var titleSpan = document.createElement('span');
+      titleSpan.className = 'maintenance-banner-title';
+      titleSpan.textContent = 'Scheduled Maintenance: ' + (mw.title || 'Unnamed');
+      item.appendChild(titleSpan);
+
+      var timeSpan = document.createElement('span');
+      timeSpan.className = 'maintenance-banner-time';
+      var startStr = mw.startTime ? formatDate(mw.startTime) : '?';
+      var endStr = mw.endTime ? formatDate(mw.endTime) : '?';
+      timeSpan.textContent = ' — ' + startStr + ' to ' + endStr;
+      item.appendChild(timeSpan);
+
+      itemsContainer.appendChild(item);
+    }
+
+    banner.appendChild(itemsContainer);
+  }
+
+  /**
+   * Check if a service is currently under active maintenance.
+   */
+  function isServiceInMaintenance(serviceId) {
+    if (!maintenanceWindows || maintenanceWindows.length === 0) return false;
+    for (var i = 0; i < maintenanceWindows.length; i++) {
+      var mw = maintenanceWindows[i];
+      var services = mw.serviceIds || mw.services || [];
+      for (var j = 0; j < services.length; j++) {
+        if (services[j] === serviceId) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Create a wrench icon element for services under maintenance.
+   */
+  function createMaintenanceIcon() {
+    var ns = 'http://www.w3.org/2000/svg';
+    var wrapper = document.createElement('span');
+    wrapper.className = 'maintenance-icon';
+    wrapper.title = 'Under maintenance';
+
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    var path = document.createElementNS(ns, 'path');
+    path.setAttribute('d',
+      'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 ' +
+      '7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z');
+    svg.appendChild(path);
+    wrapper.appendChild(svg);
+    return wrapper;
+  }
+
+  // -------------------------------------------------------------------
+  // Groups helpers
+  // -------------------------------------------------------------------
+
+  /**
+   * Fetch service groups from the API.
+   */
+  async function fetchGroups() {
+    try {
+      var cached = getCached(API_GROUPS_URL);
+      var data;
+      if (cached) {
+        data = cached;
+      } else {
+        var response = await fetch(API_GROUPS_URL);
+        if (!response.ok) return;
+        data = await response.json();
+        setCache(API_GROUPS_URL, data);
+      }
+      if (data && data.ok) {
+        groupsData = data.data || [];
+      } else {
+        groupsData = [];
+      }
+    } catch (e) {
+      groupsData = [];
+    }
+  }
+
+  /**
+   * Look up the group name from the cached groups data.
+   */
+  function getGroupName(groupId) {
+    for (var i = 0; i < groupsData.length; i++) {
+      if (groupsData[i].id === groupId) return groupsData[i].name;
+    }
+    return null;
+  }
+
   // Rendering
   function renderOverallStatus(overallStatus) {
     var dot = document.getElementById('overall-dot');
@@ -286,6 +699,7 @@
     var uptimeDisplay = service.uptimePercent != null
       ? service.uptimePercent.toFixed(2) + '%'
       : 'N/A';
+    var inMaintenance = isServiceInMaintenance(service.id);
 
     var item = document.createElement('div');
     item.className = 'service-item';
@@ -300,17 +714,32 @@
     var status = document.createElement('div');
     status.className = 'service-status';
 
-    var dot = document.createElement('span');
-    dot.className = 'service-status-dot ' + colorClass;
+    // Show wrench icon instead of status dot when under maintenance
+    if (inMaintenance) {
+      status.appendChild(createMaintenanceIcon());
+    } else {
+      var dot = document.createElement('span');
+      dot.className = 'service-status-dot ' + colorClass;
+      status.appendChild(dot);
+    }
 
     var label = document.createElement('span');
     label.className = 'service-status-label';
-    label.textContent = getStatusLabel(service.status);
+    label.textContent = inMaintenance ? 'Maintenance' : getStatusLabel(service.status);
 
-    status.appendChild(dot);
     status.appendChild(label);
     info.appendChild(name);
     info.appendChild(status);
+
+    // Service meta: SSL badge + sparkline
+    var meta = document.createElement('div');
+    meta.className = 'service-meta';
+
+    // SSL badge
+    meta.appendChild(createSslBadge(service._sslData || null));
+
+    // Sparkline
+    meta.appendChild(createSparkline(service._percentileData || null));
 
     var uptime = document.createElement('div');
     uptime.className = 'service-uptime';
@@ -327,6 +756,7 @@
     uptime.appendChild(history);
 
     item.appendChild(info);
+    item.appendChild(meta);
     item.appendChild(uptime);
 
     return item;
@@ -400,26 +830,38 @@
       return;
     }
 
-    // Fetch uptime data for all services in parallel (fixes N+1)
+    // Fetch uptime, SSL, and percentile data for all services in parallel
     var serviceIds = services.map(function (s) { return s.id; });
-    var uptimeMap = await fetchAllUptimeData(serviceIds);
+    var results = await Promise.all([
+      fetchAllUptimeData(serviceIds),
+      fetchAllSslData(serviceIds),
+      fetchAllPercentileData(serviceIds),
+    ]);
+    var uptimeMap = results[0];
+    var sslMap = results[1];
+    var percentileMap = results[2];
 
-    var servicesWithUptime = services.map(function (service) {
+    var servicesWithData = services.map(function (service) {
       var uptimeData = uptimeMap[service.id] || null;
       return Object.assign({}, service, {
         uptimePercent: uptimeData ? uptimeData.uptimePercent : null,
         uptimeHistory: uptimeData ? uptimeData.history : null,
+        _sslData: sslMap[service.id] || null,
+        _percentileData: percentileMap[service.id] || null,
       });
     });
 
-    var grouped = groupServices(servicesWithUptime);
+    var grouped = groupServices(servicesWithData);
 
     // Build DOM using DocumentFragment
     var frag = document.createDocumentFragment();
 
     Object.keys(grouped.groups).forEach(function (groupId) {
       var grpServices = grouped.groups[groupId];
-      var groupName = grpServices[0] && grpServices[0].groupName ? grpServices[0].groupName : groupId;
+      // Prefer group name from the groups API, fall back to service-embedded name, then groupId
+      var groupName = getGroupName(groupId)
+        || (grpServices[0] && grpServices[0].groupName ? grpServices[0].groupName : null)
+        || groupId;
       frag.appendChild(renderServiceGroup(groupId, groupName, grpServices));
     });
 
@@ -621,6 +1063,9 @@
     var refreshBtn = document.getElementById('refresh-btn');
     if (refreshBtn) refreshBtn.classList.add('refreshing');
 
+    // Fetch groups and maintenance first (needed before rendering services)
+    await Promise.all([fetchGroups(), fetchMaintenanceWindows()]);
+    // Then fetch status + incidents (status rendering uses groups + maintenance state)
     await Promise.all([fetchStatus(), fetchIncidents()]);
 
     if (refreshBtn) refreshBtn.classList.remove('refreshing');

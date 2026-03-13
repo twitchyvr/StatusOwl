@@ -25,6 +25,8 @@ export type {
   MaintenanceWindow,
   CreateMaintenanceWindow,
   BodyValidation,
+  AlertPolicy,
+  CreateAlertPolicy,
 } from './contracts.js';
 
 export {
@@ -40,4 +42,6 @@ export {
   MaintenanceWindowSchema,
   CreateMaintenanceWindowSchema,
   BodyValidationSchema,
+  AlertPolicySchema,
+  CreateAlertPolicySchema,
 } from './contracts.js';

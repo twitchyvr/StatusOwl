@@ -7,8 +7,11 @@
 import { createChildLogger } from '../core/index.js';
 import { listServices, updateServiceStatus, recordCheck } from '../storage/index.js';
 import { checkService } from './checker.js';
+import { checkTcp, parseTcpTarget } from './tcp-checker.js';
+import { checkDns, parseDnsTarget } from './dns-checker.js';
 import { detectIncidents } from '../incidents/detector.js';
 import type { Service } from '../core/index.js';
+import type { CheckOutcome } from './checker.js';
 
 const log = createChildLogger('Scheduler');
 
@@ -68,8 +71,27 @@ export function unscheduleService(serviceId: string): void {
 
 async function runCheck(service: Service): Promise<void> {
   try {
-    const outcome = checkService(service);
-    const result = await outcome;
+    let result: CheckOutcome;
+
+    if (service.checkType === 'tcp') {
+      const target = parseTcpTarget(service.url);
+      if (!target) {
+        result = { status: 'major_outage', responseTime: 0, statusCode: null, errorMessage: `Invalid TCP target: ${service.url}` };
+      } else {
+        const tcpResult = await checkTcp(target.host, target.port, service.timeout * 1000);
+        result = { ...tcpResult, statusCode: null };
+      }
+    } else if (service.checkType === 'dns') {
+      const hostname = parseDnsTarget(service.url);
+      if (!hostname) {
+        result = { status: 'major_outage', responseTime: 0, statusCode: null, errorMessage: `Invalid DNS target: ${service.url}` };
+      } else {
+        const dnsResult = await checkDns(hostname, undefined, service.timeout * 1000);
+        result = { status: dnsResult.status, responseTime: dnsResult.responseTime, statusCode: null, errorMessage: dnsResult.errorMessage };
+      }
+    } else {
+      result = await checkService(service);
+    }
 
     // Record the check result
     recordCheck(
