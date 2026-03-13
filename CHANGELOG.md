@@ -22,6 +22,21 @@ All notable changes to StatusOwl are documented here. This project follows [Sema
 - GitHub Actions CI/CD pipeline: install → type-check → lint → test
 - ESLint with @typescript-eslint for src/ and tests/
 - GitHub issue templates (bug report, feature request) and PR template
+- Slack notification channel: Block Kit formatted messages with severity color coding
+- Discord notification channel: rich embeds with severity, status, and affected services fields
+- Notification dispatcher: parallel delivery to all configured channels (Slack, Discord)
+- Config support for `STATUSOWL_SLACK_WEBHOOK` and `STATUSOWL_DISCORD_WEBHOOK` env vars
+- `getServicesByIds()` helper for affected service lookup in notifications
+- Status page dark mode with CSS custom properties and toggle button
+- Status page service groups with collapsible headers
+- Status page 90-day uptime history bars with tooltip drill-down
+- Status page incident timeline with severity-colored indicators
+- Status page auto-refresh with configurable interval
+- Status page responsive layout for mobile and desktop
+- Notification test suite: 22 tests for Slack and Discord formatters
+- Status page DOM tests for dark mode, groups, uptime bars, and timeline
+- Docker dev container (devcontainer.json + docker-compose.yml) and production Dockerfile
+- Vitest test suite expanded to 91 tests across 8 modules
 
 ### Fixed
 - Status page uptime field mismatch (`uptime` → `uptimePercent`) causing TypeError crash
