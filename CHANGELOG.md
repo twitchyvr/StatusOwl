@@ -17,12 +17,15 @@ All notable changes to StatusOwl are documented here. This project follows [Sema
 - REST API: full CRUD for services, checks, uptime, incidents, status
 - Public status page: real-time service status, uptime percentages, incident timeline
 - Graceful shutdown: SIGINT/SIGTERM handling, scheduler stop, database close
+- Vitest test suite: 61 tests across 6 modules (config, service-repo, check-repo, incident-repo, incident-detector, checker)
 
 ### Fixed
 - Status page uptime field mismatch (`uptime` → `uptimePercent`) causing TypeError crash
 - Null guard in uptime display (`!== null` → `!= null`) to catch both null and undefined
 - Incident detector not wired into scheduler — now runs after every health check
 - Incidents list endpoint missing timeline data — now included per incident
+- Check query ordering nondeterministic when timestamps collide — added ROWID tiebreaker
+- Service `enabled` field defaults to `false` when omitted — now defaults to `true`
 
 ## [0.1.0] — 2026-03-13
 
