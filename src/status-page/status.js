@@ -100,7 +100,7 @@ async function fetchServiceUptime(serviceId) {
     const response = await fetch(`/api/services/${serviceId}/uptime?period=90d`);
     const data = await response.json();
     if (data.ok && data.data) {
-      return data.data.uptime;
+      return data.data.uptimePercent;
     }
     return null;
   } catch (error) {
@@ -130,8 +130,8 @@ async function renderServices(services) {
   
   container.innerHTML = servicesWithUptime.map(service => {
     const colorClass = getStatusColor(service.status);
-    const uptimeDisplay = service.uptime !== null 
-      ? `${service.uptime.toFixed(2)}%` 
+    const uptimeDisplay = service.uptime != null
+      ? `${service.uptime.toFixed(2)}%`
       : 'N/A';
     
     return `
