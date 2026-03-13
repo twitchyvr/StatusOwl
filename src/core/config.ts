@@ -12,6 +12,9 @@ const ConfigSchema = z.object({
   dbPath: z.string().default('./data/statusowl.db'),
   logLevel: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
+  // API Authentication
+  apiKey: z.string().optional(),
+
   // Monitoring defaults
   defaultCheckInterval: z.coerce.number().default(60), // seconds
   defaultTimeout: z.coerce.number().default(10),       // seconds
@@ -38,6 +41,7 @@ export function loadConfig(): Config {
     host: process.env.HOST,
     dbPath: process.env.DB_PATH,
     logLevel: process.env.LOG_LEVEL,
+    apiKey: process.env.STATUSOWL_API_KEY,
     defaultCheckInterval: process.env.CHECK_INTERVAL,
     defaultTimeout: process.env.CHECK_TIMEOUT,
     maxRetries: process.env.MAX_RETRIES,

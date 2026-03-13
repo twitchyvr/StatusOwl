@@ -4,7 +4,7 @@
  * RESTful API for services, checks, incidents, and status.
  */
 
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { CreateServiceSchema } from '../core/index.js';
 import { createService, getService, listServices, updateService, deleteService } from '../storage/index.js';
 import { getRecentChecks, getUptimeSummary } from '../storage/index.js';
@@ -16,6 +16,7 @@ import {
   updateIncidentStatus,
 } from '../incidents/index.js';
 import { getDb } from '../storage/database.js';
+import { requireAuth } from './auth.js';
 
 export const router = Router();
 
@@ -36,7 +37,7 @@ router.get('/api/services/:id', (req, res) => {
   res.json(result);
 });
 
-router.post('/api/services', (req, res) => {
+router.post('/api/services', requireAuth, (req: Request, res: Response) => {
   const parsed = CreateServiceSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: parsed.error.message } });
@@ -53,7 +54,7 @@ router.post('/api/services', (req, res) => {
   res.status(201).json(result);
 });
 
-router.patch('/api/services/:id', (req, res) => {
+router.patch('/api/services/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
   const result = updateService(req.params.id, req.body);
   if (!result.ok) {
     const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
@@ -70,7 +71,7 @@ router.patch('/api/services/:id', (req, res) => {
   res.json(result);
 });
 
-router.delete('/api/services/:id', (req, res) => {
+router.delete('/api/services/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
   unscheduleService(req.params.id);
   const result = deleteService(req.params.id);
   if (!result.ok) {
@@ -169,7 +170,7 @@ router.get('/api/services/:id/incidents', (req, res) => {
   res.json(result);
 });
 
-router.post('/api/incidents/:id/update', (req, res) => {
+router.post('/api/incidents/:id/update', requireAuth, (req: Request<{id: string}>, res: Response) => {
   const { status, message } = req.body;
 
   if (!status || !message) {
