@@ -1,6 +1,7 @@
 /**
  * StatusOwl — Status Page JavaScript
  * Fetches status data from API and renders the page
+ * Features: Dark mode, service groups, uptime history, incident badges, auto-refresh
  */
 
 // Configuration
@@ -11,6 +12,99 @@ const REFRESH_INTERVAL = 60000; // 60 seconds
 // State
 let statusData = null;
 let incidentsData = null;
+let countdownInterval = null;
+let secondsUntilRefresh = REFRESH_INTERVAL / 1000;
+
+// Theme Management
+const THEME_KEY = 'statusowl-theme';
+
+/**
+ * Get the current theme preference
+ */
+function getThemePreference() {
+  // Check localStorage first
+  const savedTheme = localStorage.getItem(THEME_KEY);
+  if (savedTheme) {
+    return savedTheme;
+  }
+  // Fall back to system preference
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+/**
+ * Apply the theme to the document
+ */
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem(THEME_KEY, theme);
+}
+
+/**
+ * Toggle between light and dark themes
+ */
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  applyTheme(newTheme);
+}
+
+/**
+ * Initialize theme based on preference
+ */
+function initTheme() {
+  const theme = getThemePreference();
+  applyTheme(theme);
+  
+  // Listen for system theme changes
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    // Only auto-switch if user hasn't set a manual preference
+    if (!localStorage.getItem(THEME_KEY)) {
+      applyTheme(e.matches ? 'dark' : 'light');
+    }
+  });
+}
+
+// Auto-refresh Timer
+/**
+ * Start the countdown timer for auto-refresh
+ */
+function startRefreshTimer() {
+  // Clear any existing timer
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+  }
+  
+  secondsUntilRefresh = REFRESH_INTERVAL / 1000;
+  updateRefreshTimerDisplay();
+  
+  countdownInterval = setInterval(() => {
+    secondsUntilRefresh--;
+    updateRefreshTimerDisplay();
+    
+    if (secondsUntilRefresh <= 0) {
+      secondsUntilRefresh = REFRESH_INTERVAL / 1000;
+    }
+  }, 1000);
+}
+
+/**
+ * Update the refresh timer display
+ */
+function updateRefreshTimerDisplay() {
+  const timerDot = document.querySelector('.refresh-timer-dot');
+  const timerText = document.querySelector('.refresh-timer-text');
+  
+  if (timerDot && timerText) {
+    timerText.textContent = `Refreshing in ${secondsUntilRefresh}s`;
+    
+    // Add active class when timer is running
+    if (secondsUntilRefresh > 0) {
+      timerDot.classList.add('active');
+    } else {
+      timerDot.classList.remove('active');
+    }
+  }
+}
 
 /**
  * Get the color class for a status
@@ -93,14 +187,14 @@ function renderOverallStatus(overallStatus) {
 }
 
 /**
- * Fetch service uptime from the API
+ * Fetch service uptime data from the API
  */
-async function fetchServiceUptime(serviceId) {
+async function fetchServiceUptimeData(serviceId) {
   try {
     const response = await fetch(`/api/services/${serviceId}/uptime?period=90d`);
     const data = await response.json();
     if (data.ok && data.data) {
-      return data.data.uptimePercent;
+      return data.data;
     }
     return null;
   } catch (error) {
@@ -110,7 +204,136 @@ async function fetchServiceUptime(serviceId) {
 }
 
 /**
- * Render the services list
+ * Render the uptime history bar
+ */
+function renderUptimeBar(history) {
+  if (!history || !Array.isArray(history)) {
+    // No history data - render empty bar with no-data cells
+    return `
+      <div class="uptime-bar">
+        ${Array(90).fill('<div class="uptime-cell no-data"></div>').join('')}
+      </div>
+    `;
+  }
+  
+  // Ensure we have exactly 90 cells
+  const cells = [];
+  for (let i = 0; i < 90; i++) {
+    const dayData = history[i];
+    let cellClass = 'no-data';
+    
+    if (dayData) {
+      switch (dayData.status) {
+        case 'operational':
+          cellClass = 'operational';
+          break;
+        case 'degraded':
+          cellClass = 'degraded';
+          break;
+        case 'outage':
+        case 'major_outage':
+          cellClass = 'outage';
+          break;
+        default:
+          cellClass = 'no-data';
+      }
+    }
+    
+    cells.push(`<div class="uptime-cell ${cellClass}" title="${dayData ? dayData.status : 'No data'}"></div>`);
+  }
+  
+  return `<div class="uptime-bar">${cells.join('')}</div>`;
+}
+
+/**
+ * Group services by their groupId
+ */
+function groupServices(services) {
+  const groups = {};
+  const ungrouped = [];
+  
+  services.forEach(service => {
+    if (service.groupId) {
+      if (!groups[service.groupId]) {
+        groups[service.groupId] = [];
+      }
+      groups[service.groupId].push(service);
+    } else {
+      ungrouped.push(service);
+    }
+  });
+  
+  return { groups, ungrouped };
+}
+
+/**
+ * Render a single service item
+ */
+function renderServiceItem(service) {
+  const colorClass = getStatusColor(service.status);
+  const uptimeDisplay = service.uptimePercent != null
+    ? `${service.uptimePercent.toFixed(2)}%`
+    : 'N/A';
+  
+  const uptimeBarHtml = renderUptimeBar(service.uptimeHistory);
+  
+  return `
+    <div class="service-item">
+      <div class="service-info">
+        <span class="service-name">${escapeHtml(service.name)}</span>
+        <div class="service-status">
+          <span class="service-status-dot ${colorClass}"></span>
+          <span class="service-status-label">${getStatusLabel(service.status)}</span>
+        </div>
+      </div>
+      <div class="service-uptime">
+        <div class="uptime-history">
+          <div class="uptime-label">90-day uptime: ${uptimeDisplay}</div>
+          ${uptimeBarHtml}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Render a collapsible service group
+ */
+function renderServiceGroup(groupId, groupName, services, isCollapsed = false) {
+  const contentClass = isCollapsed ? 'service-group-content collapsed' : 'service-group-content';
+  const toggleClass = isCollapsed ? 'service-group-toggle collapsed' : 'service-group-toggle';
+  
+  return `
+    <div class="service-group" data-group-id="${escapeHtml(groupId || 'general')}">
+      <div class="service-group-header" onclick="toggleGroup(this)">
+        <span class="service-group-title">${escapeHtml(groupName)}</span>
+        <span class="${toggleClass}">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </span>
+      </div>
+      <div class="${contentClass}">
+        ${services.map(renderServiceItem).join('')}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Toggle group collapse/expand
+ */
+function toggleGroup(header) {
+  const group = header.parentElement;
+  const content = group.querySelector('.service-group-content');
+  const toggle = group.querySelector('.service-group-toggle');
+  
+  content.classList.toggle('collapsed');
+  toggle.classList.toggle('collapsed');
+}
+
+/**
+ * Render the services list with groups
  */
 async function renderServices(services) {
   const container = document.getElementById('services-list');
@@ -120,40 +343,69 @@ async function renderServices(services) {
     return;
   }
   
-  // Fetch uptime for each service
+  // Group services
+  const { groups, ungrouped } = groupServices(services);
+  
+  // Fetch uptime data for all services in parallel
   const servicesWithUptime = await Promise.all(
     services.map(async (service) => {
-      const uptime = await fetchServiceUptime(service.id);
-      return { ...service, uptime };
+      const uptimeData = await fetchServiceUptimeData(service.id);
+      return { 
+        ...service, 
+        uptimePercent: uptimeData?.uptimePercent ?? null,
+        uptimeHistory: uptimeData?.history ?? null
+      };
     })
   );
   
-  container.innerHTML = servicesWithUptime.map(service => {
-    const colorClass = getStatusColor(service.status);
-    const uptimeDisplay = service.uptime != null
-      ? `${service.uptime.toFixed(2)}%`
-      : 'N/A';
-    
-    return `
-      <div class="service-item">
-        <div class="service-info">
-          <span class="service-name">${escapeHtml(service.name)}</span>
-        </div>
-        <div class="service-status">
-          <span class="service-status-dot ${colorClass}"></span>
-          <span class="service-status-label">${getStatusLabel(service.status)}</span>
-        </div>
-        <div class="service-uptime">
-          <span class="service-uptime-value">${uptimeDisplay}</span>
-          <span> uptime (90d)</span>
-        </div>
-      </div>
-    `;
-  }).join('');
+  // Re-group after adding uptime data
+  const grouped = groupServices(servicesWithUptime);
+  
+  let html = '';
+  
+  // Render grouped services
+  Object.entries(grouped.groups).forEach(([groupId, groupServices]) => {
+    // Use the first service's groupName if available, otherwise use groupId
+    const groupName = groupServices[0]?.groupName || groupId;
+    html += renderServiceGroup(groupId, groupName, groupServices);
+  });
+  
+  // Render ungrouped services under "General" section
+  if (grouped.ungrouped.length > 0) {
+    html += renderServiceGroup('general', 'General', grouped.ungrouped);
+  }
+  
+  container.innerHTML = html;
 }
 
 /**
- * Render the incidents list
+ * Get status badge class for incident timeline
+ */
+function getStatusBadgeClass(status) {
+  switch (status) {
+    case 'investigating':
+      return 'investigating';
+    case 'identified':
+      return 'identified';
+    case 'monitoring':
+      return 'monitoring';
+    case 'resolved':
+      return 'resolved';
+    default:
+      return '';
+  }
+}
+
+/**
+ * Capitalize first letter
+ */
+function capitalize(str) {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * Render the incidents list with improved timeline styling
  */
 function renderIncidents(incidents) {
   const container = document.getElementById('incidents-list');
@@ -167,16 +419,22 @@ function renderIncidents(incidents) {
   section.style.display = 'block';
   
   container.innerHTML = incidents.map(incident => {
-    const timelineItems = (incident.timeline || []).map(update => `
-      <div class="timeline-item">
-        <div class="timeline-marker ${update.status}"></div>
-        <div class="timeline-content">
-          <div class="timeline-status">${escapeHtml(update.status)}</div>
-          ${update.message ? `<div class="timeline-message">${escapeHtml(update.message)}</div>` : ''}
-          <div class="timeline-time">${formatDate(update.createdAt)}</div>
+    const timelineItems = (incident.timeline || []).map(update => {
+      const badgeClass = getStatusBadgeClass(update.status);
+      
+      return `
+        <div class="timeline-item">
+          <div class="timeline-marker ${update.status}"></div>
+          <div class="timeline-content">
+            <div class="timeline-header">
+              <span class="incident-status-badge ${badgeClass}">${capitalize(update.status)}</span>
+            </div>
+            ${update.message ? `<div class="timeline-message">${escapeHtml(update.message)}</div>` : ''}
+            <div class="timeline-time">${formatDate(update.createdAt)}</div>
+          </div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
     
     return `
       <div class="incident-item">
@@ -243,18 +501,35 @@ async function fetchIncidents() {
 }
 
 /**
+ * Refresh all data
+ */
+async function refreshData() {
+  await Promise.all([
+    fetchStatus(),
+    fetchIncidents()
+  ]);
+  // Reset the countdown timer
+  startRefreshTimer();
+}
+
+/**
  * Initialize the status page
  */
 function init() {
-  // Initial fetch
-  fetchStatus();
-  fetchIncidents();
+  // Initialize theme
+  initTheme();
   
-  // Auto-refresh
-  setInterval(() => {
-    fetchStatus();
-    fetchIncidents();
-  }, REFRESH_INTERVAL);
+  // Set up theme toggle button
+  const themeToggle = document.getElementById('theme-toggle');
+  if (themeToggle) {
+    themeToggle.addEventListener('click', toggleTheme);
+  }
+  
+  // Initial data fetch
+  refreshData();
+  
+  // Auto-refresh with countdown timer
+  startRefreshTimer();
 }
 
 // Start the application when DOM is ready
