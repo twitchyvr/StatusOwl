@@ -5,7 +5,7 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { CreateServiceSchema, CreateServiceGroupSchema, CreateMaintenanceWindowSchema, CreateAlertPolicySchema } from '../core/index.js';
+import { CreateServiceSchema, CreateServiceGroupSchema, CreateMaintenanceWindowSchema, CreateAlertPolicySchema, getConfig } from '../core/index.js';
 import { createService, getService, listServices, listServicesPaginated, updateService, deleteService } from '../storage/index.js';
 import { getRecentChecks, getUptimeSummary, getDailyHistory, getLatestSslCheck, getSslHistory } from '../storage/index.js';
 import { getPercentiles } from '../monitors/percentile-aggregator.js';
@@ -35,6 +35,11 @@ import {
   updateAlertPolicy,
   deleteAlertPolicy,
 } from '../alerts/index.js';
+import { recordAudit, queryAuditLog } from '../audit/index.js';
+import { addDependency, removeDependency, getDependenciesOf, getDependentsOn, getDownstreamServices } from '../storage/index.js';
+import { createSubscription, confirmSubscription, unsubscribe, listSubscriptions, deleteSubscription } from '../subscriptions/index.js';
+import { generateReport, getReport, listReports } from '../reports/index.js';
+import { createRegion, listRegions, getRegion, deleteRegion, getRegionalLatency } from '../monitors/region-repo.js';
 
 // ── In-memory rate limiter (sliding window) ──
 
@@ -116,6 +121,7 @@ router.post('/api/auth/register', requireAuth, (req: Request, res: Response) => 
   }
   const result = registerClient(clientId, secret);
   if (!result.ok) return res.status(500).json(result);
+  recordAudit('auth.register', 'client', clientId, { detail: clientId });
   res.status(201).json(result);
 });
 
@@ -129,6 +135,7 @@ router.post('/api/auth/grant', (req: Request, res: Response) => {
     const status = result.error.code === 'UNAUTHORIZED' ? 401 : 400;
     return res.status(status).json(result);
   }
+  recordAudit('auth.grant', 'client', client, { detail: `scopes: ${accessScopes.join(', ')}` });
   res.status(200).json(result);
 });
 
@@ -149,6 +156,7 @@ router.post('/api/auth/revoke', (req: Request, res: Response) => {
   }
   const result = revokeToken(token);
   if (!result.ok) return res.status(500).json(result);
+  recordAudit('auth.revoke', 'token', token.substring(0, 8), { detail: 'Token revoked' });
   res.json(result);
 });
 
@@ -196,6 +204,7 @@ router.post('/api/services', requireAuth, (req: Request, res: Response) => {
     scheduleService(result.data);
   }
 
+  recordAudit('service.create', 'service', result.data.id, { detail: result.data.name });
   res.status(201).json(result);
 });
 
@@ -220,6 +229,7 @@ router.patch('/api/services/:id', requireAuth, (req: Request<{id: string}>, res:
     unscheduleService(result.data.id);
   }
 
+  recordAudit('service.update', 'service', result.data.id, { detail: result.data.name });
   res.json(result);
 });
 
@@ -230,6 +240,7 @@ router.delete('/api/services/:id', requireAuth, (req: Request<{id: string}>, res
     const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
     return res.status(status).json(result);
   }
+  recordAudit('service.delete', 'service', req.params.id);
   res.json(result);
 });
 
@@ -258,6 +269,7 @@ router.post('/api/groups', requireAuth, (req: Request, res: Response) => {
 
   const result = createGroup(parsed.data);
   if (!result.ok) return res.status(500).json(result);
+  recordAudit('group.create', 'group', result.data.id, { detail: result.data.name });
   res.status(201).json(result);
 });
 
@@ -273,6 +285,7 @@ router.patch('/api/groups/:id', requireAuth, (req: Request<{id: string}>, res: R
     const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
     return res.status(status).json(result);
   }
+  recordAudit('group.update', 'group', result.data.id, { detail: result.data.name });
   res.json(result);
 });
 
@@ -282,6 +295,7 @@ router.delete('/api/groups/:id', requireAuth, (req: Request<{id: string}>, res: 
     const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
     return res.status(status).json(result);
   }
+  recordAudit('group.delete', 'group', req.params.id);
   res.json(result);
 });
 
@@ -374,6 +388,23 @@ router.get('/api/status', (_req, res) => {
   });
 });
 
+// ── Branding (public) ──
+
+router.get('/api/branding', (_req, res) => {
+  const config = getConfig();
+  res.json({
+    ok: true,
+    data: {
+      siteName: config.siteName,
+      siteDescription: config.siteDescription,
+      logoUrl: config.logoUrl ?? null,
+      primaryColor: config.primaryColor,
+      accentColor: config.accentColor,
+      faviconUrl: config.faviconUrl ?? null,
+    },
+  });
+});
+
 // ── Maintenance Windows ──
 
 router.get('/api/maintenance-windows', (_req, res) => {
@@ -404,6 +435,7 @@ router.post('/api/maintenance-windows', requireAuth, (req: Request, res: Respons
     const status = result.error.code === 'VALIDATION' ? 400 : 500;
     return res.status(status).json(result);
   }
+  recordAudit('maintenance.create', 'maintenance', result.data.id, { detail: result.data.title });
   res.status(201).json(result);
 });
 
@@ -413,6 +445,7 @@ router.delete('/api/maintenance-windows/:id', requireAuth, (req: Request<{id: st
     const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
     return res.status(status).json(result);
   }
+  recordAudit('maintenance.delete', 'maintenance', req.params.id);
   res.json(result);
 });
 
@@ -481,6 +514,8 @@ router.post('/api/incidents/:id/update', requireAuth, (req: Request<{id: string}
     return res.status(statusCode).json(result);
   }
 
+  const auditAction = status === 'resolved' ? 'incident.resolve' as const : 'incident.update' as const;
+  recordAudit(auditAction, 'incident', req.params.id, { detail: `${status}: ${message}` });
   res.json(result);
 });
 
@@ -515,6 +550,7 @@ router.post('/api/alert-policies', requireAuth, (req: Request, res: Response) =>
 
   const result = createAlertPolicy(parsed.data);
   if (!result.ok) return res.status(500).json(result);
+  recordAudit('alert_policy.create', 'alert_policy', result.data.id, { detail: `service: ${result.data.serviceId}` });
   res.status(201).json(result);
 });
 
@@ -530,6 +566,7 @@ router.patch('/api/alert-policies/:id', requireAuth, (req: Request<{id: string}>
     const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
     return res.status(status).json(result);
   }
+  recordAudit('alert_policy.update', 'alert_policy', result.data.id, { detail: `service: ${result.data.serviceId}` });
   res.json(result);
 });
 
@@ -539,7 +576,141 @@ router.delete('/api/alert-policies/:id', requireAuth, (req: Request<{id: string}
     const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
     return res.status(status).json(result);
   }
+  recordAudit('alert_policy.delete', 'alert_policy', req.params.id);
   res.json(result);
+});
+
+// ── Service Dependencies ──
+
+router.get('/api/services/:id/dependencies', (req, res) => {
+  const result = getDependenciesOf(req.params.id);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.get('/api/services/:id/dependents', (req, res) => {
+  const result = getDependentsOn(req.params.id);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.get('/api/services/:id/downstream', (req, res) => {
+  const result = getDownstreamServices(req.params.id);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.post('/api/services/:id/dependencies', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const { childServiceId } = req.body;
+  if (!childServiceId) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'childServiceId is required' } });
+  }
+  const result = addDependency(req.params.id, childServiceId);
+  if (!result.ok) {
+    const status = result.error.code === 'VALIDATION' || result.error.code === 'DUPLICATE' ? 400 : 500;
+    return res.status(status).json(result);
+  }
+  res.status(201).json(result);
+});
+
+router.delete('/api/dependencies/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const result = removeDependency(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+// ── Subscriptions ──
+
+router.post('/api/subscriptions', (req: Request, res: Response) => {
+  const { email, serviceId } = req.body;
+  if (!email) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'email is required' } });
+  }
+  const result = createSubscription(email, serviceId);
+  if (!result.ok) {
+    const status = result.error.code === 'DUPLICATE' ? 409 : 500;
+    return res.status(status).json(result);
+  }
+  // In production, send confirmation email here
+  res.status(201).json({ ok: true, data: { id: result.data.id, message: 'Please check your email to confirm subscription' } });
+});
+
+router.get('/api/subscriptions/confirm/:token', (req, res) => {
+  const result = confirmSubscription(req.params.token);
+  if (!result.ok) {
+    return res.status(404).json(result);
+  }
+  res.json({ ok: true, data: { message: 'Subscription confirmed' } });
+});
+
+router.get('/api/subscriptions/unsubscribe/:token', (req, res) => {
+  const result = unsubscribe(req.params.token);
+  if (!result.ok) {
+    return res.status(404).json(result);
+  }
+  res.json({ ok: true, data: { message: 'Successfully unsubscribed' } });
+});
+
+router.get('/api/subscriptions', requireAuth, (_req, res) => {
+  const result = listSubscriptions();
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.delete('/api/subscriptions/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const result = deleteSubscription(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+// ── Reports ──
+
+router.get('/api/reports', (req, res) => {
+  const period = req.query.period as string | undefined;
+  const limit = parseInt(req.query.limit as string) || 30;
+  const result = listReports({ period, limit });
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.get('/api/reports/:id', (req, res) => {
+  const result = getReport(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+router.post('/api/reports/generate', requireAuth, (req: Request, res: Response) => {
+  const period = req.body.period as string;
+  if (!period || !['daily', 'weekly'].includes(period)) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'period must be daily or weekly' } });
+  }
+  const result = generateReport(period as 'daily' | 'weekly');
+  if (!result.ok) return res.status(500).json(result);
+  res.status(201).json(result);
+});
+
+
+// ── Audit Log ──
+
+router.get('/api/audit-log', requireAuth, (req, res) => {
+  const action = req.query.action as string | undefined;
+  const resourceType = req.query.resourceType as string | undefined;
+  const resourceId = req.query.resourceId as string | undefined;
+  const limit = parseInt(req.query.limit as string) || 50;
+  const offset = parseInt(req.query.offset as string) || 0;
+
+  const result = queryAuditLog({ action, resourceType, resourceId, limit, offset });
+  if (!result.ok) return res.status(500).json(result);
+  res.json({ ok: true, data: result.data.entries, pagination: { total: result.data.total, limit, offset } });
 });
 
 // ── V2 Paginated Endpoints ──
@@ -629,4 +800,50 @@ router.get('/api/v2/incidents', (req, res) => {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ ok: false, error: { code: 'DB_ERROR', message: msg } });
   }
+});
+
+// ── Monitoring Regions ──
+
+router.get('/api/regions', (_req, res) => {
+  const result = listRegions();
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.post('/api/regions', requireAuth, (req: Request, res: Response) => {
+  const { id, name, location } = req.body;
+  if (!id || !name) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'id and name are required' } });
+  }
+  const result = createRegion(id, name, location);
+  if (!result.ok) {
+    const status = result.error.code === 'DUPLICATE' ? 409 : 500;
+    return res.status(status).json(result);
+  }
+  res.status(201).json(result);
+});
+
+router.get('/api/regions/:id', (req, res) => {
+  const result = getRegion(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+router.delete('/api/regions/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const result = deleteRegion(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : result.error.code === 'VALIDATION' ? 400 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+router.get('/api/services/:id/regional-latency', (req, res) => {
+  const hours = parseInt(req.query.hours as string) || 24;
+  const result = getRegionalLatency(req.params.id, hours);
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
 });

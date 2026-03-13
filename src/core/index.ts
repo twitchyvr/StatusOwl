@@ -22,11 +22,17 @@ export type {
   IncidentStatus,
   Webhook,
   UptimeSummary,
+  UptimeReport,
   MaintenanceWindow,
   CreateMaintenanceWindow,
   BodyValidation,
   AlertPolicy,
   CreateAlertPolicy,
+  ServiceDependency,
+  AuditAction,
+  AuditLogEntry,
+  Subscription,
+  MonitoringRegion,
 } from './contracts.js';
 
 export {
@@ -44,4 +50,10 @@ export {
   BodyValidationSchema,
   AlertPolicySchema,
   CreateAlertPolicySchema,
+  ServiceDependencySchema,
+  AuditActionSchema,
+  AuditLogEntrySchema,
+  SubscriptionSchema,
+  UptimeReportSchema,
+  MonitoringRegionSchema,
 } from './contracts.js';

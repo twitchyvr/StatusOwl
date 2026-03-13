@@ -24,6 +24,12 @@ const ConfigSchema = z.object({
   siteName: z.string().default('StatusOwl'),
   siteDescription: z.string().default('Service Status'),
 
+  // Branding
+  logoUrl: z.string().url().optional(),
+  primaryColor: z.string().default('#2563eb'),
+  accentColor: z.string().default('#059669'),
+  faviconUrl: z.string().url().optional(),
+
   // Webhook alerts
   webhookRetries: z.coerce.number().default(3),
   webhookBackoffMs: z.coerce.number().default(1000),
@@ -60,6 +66,10 @@ export function loadConfig(): Config {
     maxRetries: process.env.MAX_RETRIES,
     siteName: process.env.SITE_NAME,
     siteDescription: process.env.SITE_DESCRIPTION,
+    logoUrl: process.env.STATUSOWL_LOGO_URL,
+    primaryColor: process.env.STATUSOWL_PRIMARY_COLOR,
+    accentColor: process.env.STATUSOWL_ACCENT_COLOR,
+    faviconUrl: process.env.STATUSOWL_FAVICON_URL,
     webhookRetries: process.env.WEBHOOK_RETRIES,
     webhookBackoffMs: process.env.WEBHOOK_BACKOFF_MS,
     slackWebhook: process.env.STATUSOWL_SLACK_WEBHOOK,

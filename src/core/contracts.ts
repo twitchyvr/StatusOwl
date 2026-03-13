@@ -189,6 +189,62 @@ export const CreateAlertPolicySchema = AlertPolicySchema.omit({
 });
 export type CreateAlertPolicy = z.infer<typeof CreateAlertPolicySchema>;
 
+// ── Service Dependency ──
+
+export const ServiceDependencySchema = z.object({
+  id: z.string().uuid(),
+  parentServiceId: z.string().uuid(),
+  childServiceId: z.string().uuid(),
+  createdAt: z.string().datetime().optional(),
+});
+export type ServiceDependency = z.infer<typeof ServiceDependencySchema>;
+
+// ── Audit Log ──
+
+export const AuditActionSchema = z.enum([
+  'service.create', 'service.update', 'service.delete',
+  'group.create', 'group.update', 'group.delete',
+  'incident.create', 'incident.update', 'incident.resolve',
+  'maintenance.create', 'maintenance.delete',
+  'alert_policy.create', 'alert_policy.update', 'alert_policy.delete',
+  'auth.register', 'auth.grant', 'auth.revoke',
+]);
+export type AuditAction = z.infer<typeof AuditActionSchema>;
+
+export const AuditLogEntrySchema = z.object({
+  id: z.string().uuid(),
+  action: AuditActionSchema,
+  resourceType: z.string(),
+  resourceId: z.string(),
+  actor: z.string().default('system'),
+  detail: z.string().nullable().default(null),
+  createdAt: z.string().datetime().optional(),
+});
+export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
+
+// ── Incident Subscription ──
+
+export const SubscriptionSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  serviceId: z.string().uuid().nullable().default(null), // null = all services
+  confirmed: z.boolean().default(false),
+  confirmToken: z.string(),
+  unsubscribeToken: z.string(),
+  createdAt: z.string().datetime().optional(),
+});
+export type Subscription = z.infer<typeof SubscriptionSchema>;
+
+// ── Monitoring Region ──
+
+export const MonitoringRegionSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(100),
+  location: z.string().max(200).default(''),
+  enabled: z.boolean().default(true),
+});
+export type MonitoringRegion = z.infer<typeof MonitoringRegionSchema>;
+
 // ── Uptime summary ──
 
 export interface UptimeSummary {
@@ -199,3 +255,15 @@ export interface UptimeSummary {
   successfulChecks: number;
   avgResponseTime: number;
 }
+
+// ── Uptime Report ──
+
+export const UptimeReportSchema = z.object({
+  id: z.string().uuid(),
+  period: z.enum(['daily', 'weekly']),
+  startDate: z.string(),
+  endDate: z.string(),
+  generatedAt: z.string().datetime().optional(),
+  data: z.any(), // JSON blob with per-service stats
+});
+export type UptimeReport = z.infer<typeof UptimeReportSchema>;

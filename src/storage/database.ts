@@ -219,6 +219,85 @@ function runMigrations(db: Database.Database): void {
         );
       `,
     },
+    {
+      version: 6,
+      sql: `
+        CREATE TABLE IF NOT EXISTS audit_log (
+          id TEXT PRIMARY KEY,
+          action TEXT NOT NULL,
+          resource_type TEXT NOT NULL,
+          resource_id TEXT NOT NULL,
+          actor TEXT NOT NULL DEFAULT 'system',
+          detail TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(resource_type, resource_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at DESC);
+      `,
+    },
+    {
+      version: 7,
+      sql: `
+        CREATE TABLE IF NOT EXISTS service_dependencies (
+          id TEXT PRIMARY KEY,
+          parent_service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+          child_service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(parent_service_id, child_service_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_deps_parent ON service_dependencies(parent_service_id);
+        CREATE INDEX IF NOT EXISTS idx_deps_child ON service_dependencies(child_service_id);
+      `,
+    },
+    {
+      version: 8,
+      sql: `
+        CREATE TABLE IF NOT EXISTS subscriptions (
+          id TEXT PRIMARY KEY,
+          email TEXT NOT NULL,
+          service_id TEXT REFERENCES services(id) ON DELETE CASCADE,
+          confirmed INTEGER NOT NULL DEFAULT 0,
+          confirm_token TEXT NOT NULL,
+          unsubscribe_token TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_subscriptions_email ON subscriptions(email);
+        CREATE INDEX IF NOT EXISTS idx_subscriptions_service ON subscriptions(service_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_unique ON subscriptions(email, service_id);
+      `,
+    },
+    {
+      version: 9,
+      sql: `
+        CREATE TABLE IF NOT EXISTS uptime_reports (
+          id TEXT PRIMARY KEY,
+          period TEXT NOT NULL,
+          start_date TEXT NOT NULL,
+          end_date TEXT NOT NULL,
+          data TEXT NOT NULL DEFAULT '{}',
+          generated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_reports_period ON uptime_reports(period, start_date DESC);
+      `,
+    },
+    {
+      version: 10,
+      sql: `
+        CREATE TABLE IF NOT EXISTS monitoring_regions (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          location TEXT NOT NULL DEFAULT '',
+          enabled INTEGER NOT NULL DEFAULT 1
+        );
+
+        -- Add region_id to check_results
+        ALTER TABLE check_results ADD COLUMN region_id TEXT DEFAULT 'default';
+
+        -- Seed default region
+        INSERT OR IGNORE INTO monitoring_regions (id, name, location, enabled) VALUES ('default', 'Default', 'Local', 1);
+      `,
+    },
   ];
 
   const applyMigration = db.transaction((m: { version: number; sql: string }) => {

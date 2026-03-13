@@ -11,6 +11,7 @@ import { getDb, closeDb } from './storage/index.js';
 import { startScheduler, stopScheduler } from './monitors/index.js';
 import { startDailyAggregator, stopDailyAggregator } from './monitors/daily-aggregator.js';
 import { startPercentileAggregator, stopPercentileAggregator } from './monitors/percentile-aggregator.js';
+import { startReportScheduler, stopReportScheduler } from './reports/index.js';
 import { router } from './api/routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -46,6 +47,7 @@ getDb();
 startScheduler();
 startDailyAggregator();
 startPercentileAggregator();
+startReportScheduler();
 
 const server = app.listen(config.port, config.host, () => {
   log.info({ port: config.port, host: config.host }, 'StatusOwl server started');
@@ -57,6 +59,7 @@ function shutdown() {
   stopScheduler();
   stopDailyAggregator();
   stopPercentileAggregator();
+  stopReportScheduler();
   server.close();
   closeDb();
   process.exit(0);

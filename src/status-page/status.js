@@ -1072,8 +1072,72 @@
     startRefreshTimer();
   }
 
+  // -------------------------------------------------------------------
+  // Branding
+  // -------------------------------------------------------------------
+
+  async function applyBranding() {
+    try {
+      var response = await fetch('/api/branding');
+      if (!response.ok) return;
+      var json = await response.json();
+      var data = json.data;
+
+      // Apply site name
+      if (data.siteName) {
+        document.title = data.siteName;
+        var titleEl = document.querySelector('.site-title');
+        if (titleEl) titleEl.textContent = data.siteName;
+      }
+
+      // Apply site description
+      if (data.siteDescription) {
+        var descEl = document.querySelector('.site-description');
+        if (descEl) descEl.textContent = data.siteDescription;
+      }
+
+      // Apply logo
+      if (data.logoUrl) {
+        var logoEl = document.querySelector('.site-logo');
+        if (logoEl) {
+          var img = document.createElement('img');
+          img.src = data.logoUrl;
+          img.alt = data.siteName || 'Logo';
+          img.style.height = '32px';
+          img.style.marginRight = '8px';
+          logoEl.innerHTML = '';
+          logoEl.appendChild(img);
+        }
+      }
+
+      // Apply colors as CSS custom properties
+      if (data.primaryColor) {
+        document.documentElement.style.setProperty('--brand-primary', data.primaryColor);
+      }
+      if (data.accentColor) {
+        document.documentElement.style.setProperty('--brand-accent', data.accentColor);
+      }
+
+      // Apply favicon
+      if (data.faviconUrl) {
+        var link = document.querySelector('link[rel="icon"]');
+        if (!link) {
+          link = document.createElement('link');
+          link.rel = 'icon';
+          document.head.appendChild(link);
+        }
+        link.href = data.faviconUrl;
+      }
+    } catch (e) {
+      console.error('Failed to load branding:', e);
+    }
+  }
+
   function init() {
     initTheme();
+
+    // Apply branding from server config
+    applyBranding();
 
     // Theme toggle
     var themeToggle = document.getElementById('theme-toggle');

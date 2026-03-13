@@ -21,6 +21,12 @@ StatusOwl monitors HTTP endpoints, tracks incidents, displays uptime history, an
 - **Public Status Page** — SSL badges, response time sparklines, maintenance banners, group organization
 - **Uptime Tracking** — 90-day daily uptime history with aggregation background job
 - **Notification Channels** — Email (SMTP), Slack (Block Kit), Discord (rich embeds), webhooks (HMAC-SHA256)
+- **Audit Log** — Full audit trail for all mutation endpoints with filtering and pagination
+- **Service Dependencies** — Dependency graph with cycle detection and downstream cascade discovery
+- **Custom Branding** — Configurable status page: logo, colors, favicon via API and env vars
+- **Incident Subscriptions** — Email subscription system with confirmation tokens, per-service or global
+- **Scheduled Reports** — Daily/weekly uptime report generation with background scheduler
+- **Multi-Region Monitoring** — Region-based health checks with regional latency tracking
 - **Paginated API** — Cursor-based pagination with filtering on `/api/v2/` endpoints
 - **RESTful API** — Full CRUD for services, groups, incidents, maintenance windows, alert policies, and auth
 - **Graceful Shutdown** — Proper signal handling, scheduler cleanup, database close
@@ -41,12 +47,15 @@ StatusOwl monitors HTTP endpoints, tracks incidents, displays uptime history, an
 ```
 src/
   core/            # Config (Zod), logger (Pino), contracts (Result pattern, types)
-  storage/         # SQLite database, service-repo, check-repo, group-repo, ssl-repo
+  storage/         # SQLite database, service-repo, check-repo, group-repo, ssl-repo, dependency-repo
   monitors/        # Health checker, scheduler, SSL checker, body validator, percentile/daily aggregators
   incidents/       # Incident repo, auto-detector (configurable thresholds)
   alerts/          # Alert policy repo, cooldown management
   maintenance/     # Maintenance window repo, active window detection
   auth/            # GNAP authorization (RFC 9635), token management
+  audit/           # Audit log repository, query and purge operations
+  subscriptions/   # Incident subscription repo, confirm/unsubscribe token flow
+  reports/         # Uptime report generator, daily/weekly scheduler
   notifications/   # Webhook repo, Slack/Discord/Email formatters, event dispatcher
   api/             # Express REST routes with rate limiting, auth, pagination
   status-page/     # Public HTML/CSS/JS status page
@@ -126,6 +135,26 @@ curl -X POST http://localhost:3000/api/services \
 | POST | `/api/auth/introspect` | Introspect a token |
 | POST | `/api/auth/revoke` | Revoke a token |
 | POST | `/api/auth/rotate` | Rotate a token |
+| **Audit Log** | | |
+| GET | `/api/audit-log` | Query audit log with filtering |
+| **Branding** | | |
+| GET | `/api/branding` | Public branding configuration |
+| **Dependencies** | | |
+| GET | `/api/services/:id/dependencies` | Dependencies of a service |
+| GET | `/api/services/:id/dependents` | Services that depend on a service |
+| GET | `/api/services/:id/downstream` | All downstream services (recursive) |
+| POST | `/api/services/:id/dependencies` | Add a dependency |
+| DELETE | `/api/dependencies/:id` | Remove a dependency |
+| **Subscriptions** | | |
+| POST | `/api/subscriptions` | Subscribe to incident notifications |
+| GET | `/api/subscriptions/confirm/:token` | Confirm a subscription |
+| GET | `/api/subscriptions/unsubscribe/:token` | Unsubscribe |
+| GET | `/api/subscriptions` | List all subscriptions (admin) |
+| DELETE | `/api/subscriptions/:id` | Delete a subscription (admin) |
+| **Reports** | | |
+| GET | `/api/reports` | List generated reports |
+| GET | `/api/reports/:id` | Get a specific report |
+| POST | `/api/reports/generate` | Generate a report on demand |
 | **Paginated (v2)** | | |
 | GET | `/api/v2/services` | Paginated services with filtering |
 | GET | `/api/v2/incidents` | Paginated incidents with filtering |
@@ -154,6 +183,10 @@ All settings via environment variables with sensible defaults:
 | `STATUSOWL_SMTP_PASS` | — | SMTP password |
 | `STATUSOWL_EMAIL_FROM` | — | Sender email address |
 | `STATUSOWL_EMAIL_TO` | — | Recipient emails (comma-separated) |
+| `STATUSOWL_LOGO_URL` | — | Status page logo URL |
+| `STATUSOWL_PRIMARY_COLOR` | `#2563eb` | Status page primary color |
+| `STATUSOWL_ACCENT_COLOR` | `#059669` | Status page accent color |
+| `STATUSOWL_FAVICON_URL` | — | Status page favicon URL |
 
 ## Scripts
 
