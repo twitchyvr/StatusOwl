@@ -4,6 +4,26 @@ All notable changes to StatusOwl are documented here. This project follows [Sema
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-03-13
+
+### Added
+- **GNAP Authorization Protocol** — RFC 9635 compliant auth: client registration, token grants, introspection, revocation, rotation, scope-based middleware (#53)
+- **TCP Health Checks** — Port connectivity checks with timeout, supports `tcp://host:port` format (#55)
+- **DNS Health Checks** — Domain resolution checks with optional expected address validation (#55)
+- **Configurable Alert Policies** — Per-service failure thresholds, response time alerts, cooldown periods (#56)
+- **Cursor-based API Pagination** — `/api/v2/services` and `/api/v2/incidents` with filtering (#57)
+- **Email Notification Channel** — SMTP transport, HTML/plain text templates, multi-recipient support (#54)
+- **Status Page: SSL Badges** — Color-coded lock icons showing certificate validity and expiry (#58)
+- **Status Page: Response Time Sparklines** — Inline SVG charts showing p50/p95 over 24h (#58)
+- **Status Page: Maintenance Banners** — Yellow alert banner for active maintenance windows (#58)
+- **Status Page: Group Organization** — Services rendered within API-sourced groups (#58)
+- GNAP API routes: `/api/auth/register`, `/api/auth/grant`, `/api/auth/introspect`, `/api/auth/revoke`, `/api/auth/rotate`
+- Alert policy API routes: `/api/alert-policies` (CRUD), `/api/services/:id/alert-policy`
+- `checkType` field on services (`http`, `tcp`, `dns`) with scheduler dispatch
+- Database migrations #4 (`check_type` column) and #5 (`alert_policies`, `alert_cooldowns` tables)
+- SMTP configuration env vars: `STATUSOWL_SMTP_HOST`, `STATUSOWL_SMTP_PORT`, `STATUSOWL_SMTP_USER`, `STATUSOWL_SMTP_PASS`, `STATUSOWL_EMAIL_FROM`, `STATUSOWL_EMAIL_TO`
+- 358 tests across 22 modules (133 new tests)
+
 ## [0.3.0] — 2026-03-13
 
 ### Added
