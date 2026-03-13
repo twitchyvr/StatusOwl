@@ -4,6 +4,23 @@ All notable changes to StatusOwl are documented here. This project follows [Sema
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-03-13
+
+### Added
+- **Service Groups API** — CRUD for organizing services into logical groups (#47)
+- **Maintenance Windows** — Scheduled maintenance periods that suppress incident detection (#46)
+- **Body Validation** — Response body assertions: substring, regex, JSON path extraction (#48)
+- **Uptime History** — Daily uptime aggregation with 90-day history endpoint (#49)
+- **SSL Certificate Monitoring** — TLS certificate extraction, expiry tracking, alert levels (#50)
+- **Response Time Percentiles** — Hourly p50/p95/p99 aggregation with background job (#51)
+- API routes: `/api/groups`, `/api/maintenance-windows`, `/api/services/:id/ssl`, `/api/services/:id/ssl/history`, `/api/services/:id/percentiles`, `/api/services/:id/uptime/history`
+- Database migration #2: `maintenance_windows` table, `body_validation` column on services
+- Database migration #3: `ssl_checks` table, `response_time_buckets` table
+- Background aggregators: daily uptime (24h cycle), hourly percentiles (1h cycle)
+- 225 tests across 16 modules (72 new tests)
+
+## [0.2.0] — 2026-03-13
+
 ### Added
 - Core foundation: config (Zod schema), logger (Pino), contracts (Result pattern, types)
 - SQLite database with schema migrations (better-sqlite3, WAL mode)
@@ -36,7 +53,7 @@ All notable changes to StatusOwl are documented here. This project follows [Sema
 - Notification test suite: 22 tests for Slack and Discord formatters
 - Status page DOM tests for dark mode, groups, uptime bars, and timeline
 - Docker dev container (devcontainer.json + docker-compose.yml) and production Dockerfile
-- Vitest test suite expanded to 91 tests across 8 modules
+- Vitest test suite expanded to 153 tests across 12 modules
 
 ### Fixed
 - Status page uptime field mismatch (`uptime` → `uptimePercent`) causing TypeError crash

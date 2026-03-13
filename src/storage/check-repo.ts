@@ -98,6 +98,88 @@ export function pruneOldChecks(olderThanDays = 90): Result<number> {
   }
 }
 
+export interface DailyUptimeRecord {
+  date: string;
+  totalChecks: number;
+  successfulChecks: number;
+  avgResponseTime: number;
+  uptimePercent: number;
+}
+
+/**
+ * Aggregate a single day's check results into the uptime_daily table.
+ * Uses UPSERT to handle re-runs safely.
+ */
+export function aggregateDailyUptime(serviceId: string, date: string): Result<void> {
+  try {
+    const db = getDb();
+
+    const row = db.prepare(`
+      SELECT
+        COUNT(*) as total_checks,
+        SUM(CASE WHEN status = 'operational' THEN 1 ELSE 0 END) as successful_checks,
+        AVG(response_time) as avg_response_time
+      FROM check_results
+      WHERE service_id = ?
+        AND date(checked_at) = ?
+    `).get(serviceId, date) as Record<string, unknown>;
+
+    const total = (row.total_checks as number) || 0;
+    if (total === 0) return ok(undefined); // No checks for this day
+
+    db.prepare(`
+      INSERT INTO uptime_daily (service_id, date, total_checks, successful_checks, avg_response_time)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(service_id, date)
+      DO UPDATE SET
+        total_checks = excluded.total_checks,
+        successful_checks = excluded.successful_checks,
+        avg_response_time = excluded.avg_response_time
+    `).run(
+      serviceId,
+      date,
+      total,
+      (row.successful_checks as number) || 0,
+      (row.avg_response_time as number) || 0,
+    );
+
+    return ok(undefined);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return err('AGGREGATION_FAILED', msg);
+  }
+}
+
+/**
+ * Get daily uptime history for a service over the last N days.
+ */
+export function getDailyHistory(serviceId: string, days = 90): Result<DailyUptimeRecord[]> {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT * FROM uptime_daily
+      WHERE service_id = ?
+        AND date >= date('now', '-' || ? || ' days')
+      ORDER BY date ASC
+    `).all(serviceId, days) as Record<string, unknown>[];
+
+    return ok(rows.map(row => {
+      const total = (row.total_checks as number) || 0;
+      const successful = (row.successful_checks as number) || 0;
+      return {
+        date: row.date as string,
+        totalChecks: total,
+        successfulChecks: successful,
+        avgResponseTime: (row.avg_response_time as number) || 0,
+        uptimePercent: total > 0 ? (successful / total) * 100 : 100,
+      };
+    }));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return err('QUERY_FAILED', msg);
+  }
+}
+
 function rowToCheck(row: Record<string, unknown>): CheckResult {
   return {
     id: row.id as string,

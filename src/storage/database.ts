@@ -140,6 +140,58 @@ function runMigrations(db: Database.Database): void {
         );
       `,
     },
+    {
+      version: 2,
+      sql: `
+        -- Maintenance windows
+        CREATE TABLE IF NOT EXISTS maintenance_windows (
+          id TEXT PRIMARY KEY,
+          service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          start_at TEXT NOT NULL,
+          end_at TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_maintenance_windows_service ON maintenance_windows(service_id, start_at, end_at);
+
+        -- Body validation config on services
+        ALTER TABLE services ADD COLUMN body_validation TEXT;
+      `,
+    },
+    {
+      version: 3,
+      sql: `
+        -- SSL certificate check results
+        CREATE TABLE IF NOT EXISTS ssl_checks (
+          id TEXT PRIMARY KEY,
+          service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+          valid INTEGER NOT NULL DEFAULT 0,
+          valid_from TEXT NOT NULL DEFAULT '',
+          valid_to TEXT NOT NULL DEFAULT '',
+          issuer TEXT NOT NULL DEFAULT '',
+          subject TEXT NOT NULL DEFAULT '',
+          days_until_expiry INTEGER NOT NULL DEFAULT -1,
+          error_message TEXT,
+          checked_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ssl_checks_service ON ssl_checks(service_id, checked_at DESC);
+
+        -- Response time percentile buckets (hourly)
+        CREATE TABLE IF NOT EXISTS response_time_buckets (
+          service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+          hour TEXT NOT NULL,
+          p50 REAL NOT NULL DEFAULT 0,
+          p95 REAL NOT NULL DEFAULT 0,
+          p99 REAL NOT NULL DEFAULT 0,
+          min REAL NOT NULL DEFAULT 0,
+          max REAL NOT NULL DEFAULT 0,
+          sample_count INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (service_id, hour)
+        );
+      `,
+    },
   ];
 
   const applyMigration = db.transaction((m: { version: number; sql: string }) => {

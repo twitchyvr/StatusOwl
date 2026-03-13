@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig, getLogger } from './core/index.js';
 import { getDb, closeDb } from './storage/index.js';
 import { startScheduler, stopScheduler } from './monitors/index.js';
+import { startDailyAggregator, stopDailyAggregator } from './monitors/daily-aggregator.js';
+import { startPercentileAggregator, stopPercentileAggregator } from './monitors/percentile-aggregator.js';
 import { router } from './api/routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -40,8 +42,10 @@ app.get('/health', (_req, res) => {
 // Initialize database
 getDb();
 
-// Start monitoring scheduler
+// Start monitoring scheduler and daily aggregator
 startScheduler();
+startDailyAggregator();
+startPercentileAggregator();
 
 const server = app.listen(config.port, config.host, () => {
   log.info({ port: config.port, host: config.host }, 'StatusOwl server started');
@@ -51,6 +55,8 @@ const server = app.listen(config.port, config.host, () => {
 function shutdown() {
   log.info('Shutting down...');
   stopScheduler();
+  stopDailyAggregator();
+  stopPercentileAggregator();
   server.close();
   closeDb();
   process.exit(0);

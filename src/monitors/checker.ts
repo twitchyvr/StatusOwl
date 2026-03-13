@@ -5,6 +5,7 @@
  */
 
 import { createChildLogger } from '../core/index.js';
+import { validateBody } from './body-validator.js';
 import type { Service, ServiceStatus } from '../core/index.js';
 
 const log = createChildLogger('Checker');
@@ -41,6 +42,20 @@ export async function checkService(service: Service): Promise<CheckOutcome> {
     const isExpected = response.status === service.expectedStatus;
 
     if (isExpected) {
+      // Run body validation if configured
+      if (service.bodyValidation) {
+        const bodyText = await response.text();
+        const validation = validateBody(bodyText, service.bodyValidation);
+        if (!validation.valid) {
+          return {
+            status: 'degraded',
+            responseTime,
+            statusCode: response.status,
+            errorMessage: validation.errorMessage,
+          };
+        }
+      }
+
       return {
         status: 'operational',
         responseTime,
