@@ -18,6 +18,7 @@ import {
   getIncidentById,
 } from './incident-repo.js';
 import { notifyIncident } from '../notifications/index.js';
+import { isInMaintenanceWindow } from '../maintenance/index.js';
 
 const log = createChildLogger('IncidentDetector');
 
@@ -110,6 +111,12 @@ async function processServiceChecks(
     const checks = recentChecks.map(rowToCheck);
     const failureCount = countConsecutiveFailures(checks);
     const hasRecentSuccess = checks.length > 0 && checks[0].status === SUCCESS_STATUS;
+
+    // Skip incident creation if service is in a maintenance window
+    if (isInMaintenanceWindow(serviceId)) {
+      log.debug({ serviceId, serviceName }, 'Service in maintenance window, skipping incident detection');
+      return {};
+    }
 
     // Rule 1: Create incident if 3+ consecutive failures and no open incident
     if (failureCount >= CONSECUTIVE_FAILURE_THRESHOLD && !existingIncident) {

@@ -140,6 +140,25 @@ function runMigrations(db: Database.Database): void {
         );
       `,
     },
+    {
+      version: 2,
+      sql: `
+        -- Maintenance windows
+        CREATE TABLE IF NOT EXISTS maintenance_windows (
+          id TEXT PRIMARY KEY,
+          service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          start_at TEXT NOT NULL,
+          end_at TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_maintenance_windows_service ON maintenance_windows(service_id, start_at, end_at);
+
+        -- Body validation config on services
+        ALTER TABLE services ADD COLUMN body_validation TEXT;
+      `,
+    },
   ];
 
   const applyMigration = db.transaction((m: { version: number; sql: string }) => {

@@ -5,9 +5,16 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { CreateServiceSchema } from '../core/index.js';
+import { CreateServiceSchema, CreateServiceGroupSchema, CreateMaintenanceWindowSchema } from '../core/index.js';
 import { createService, getService, listServices, updateService, deleteService } from '../storage/index.js';
-import { getRecentChecks, getUptimeSummary } from '../storage/index.js';
+import { getRecentChecks, getUptimeSummary, getDailyHistory } from '../storage/index.js';
+import { createGroup, getGroup, listGroups, updateGroup, deleteGroup } from '../storage/index.js';
+import {
+  createMaintenanceWindow,
+  getMaintenanceWindow,
+  listMaintenanceWindows,
+  deleteMaintenanceWindow,
+} from '../maintenance/index.js';
 import { scheduleService, unscheduleService } from '../monitors/index.js';
 import {
   getOpenIncidents,
@@ -157,6 +164,58 @@ router.delete('/api/services/:id', requireAuth, (req: Request<{id: string}>, res
   res.json(result);
 });
 
+// ── Service Groups ──
+
+router.get('/api/groups', (_req, res) => {
+  const result = listGroups();
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.get('/api/groups/:id', (req, res) => {
+  const result = getGroup(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+router.post('/api/groups', requireAuth, (req: Request, res: Response) => {
+  const parsed = CreateServiceGroupSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: parsed.error.message } });
+  }
+
+  const result = createGroup(parsed.data);
+  if (!result.ok) return res.status(500).json(result);
+  res.status(201).json(result);
+});
+
+router.patch('/api/groups/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const UpdateSchema = CreateServiceGroupSchema.partial();
+  const parsed = UpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: parsed.error.message } });
+  }
+
+  const result = updateGroup(req.params.id, parsed.data);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+router.delete('/api/groups/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const result = deleteGroup(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
 // ── Health Checks ──
 
 router.get('/api/services/:id/checks', (req, res) => {
@@ -172,6 +231,16 @@ router.get('/api/services/:id/uptime', (req, res) => {
     return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'period must be 24h, 7d, 30d, or 90d' } });
   }
   const result = getUptimeSummary(req.params.id, period as '24h' | '7d' | '30d' | '90d');
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.get('/api/services/:id/uptime/history', (req, res) => {
+  const days = parseInt(req.query.days as string) || 90;
+  if (days < 1 || days > 365) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: 'days must be between 1 and 365' } });
+  }
+  const result = getDailyHistory(req.params.id, days);
   if (!result.ok) return res.status(500).json(result);
   res.json(result);
 });
@@ -207,6 +276,48 @@ router.get('/api/status', (_req, res) => {
       })),
     },
   });
+});
+
+// ── Maintenance Windows ──
+
+router.get('/api/maintenance-windows', (_req, res) => {
+  const serviceId = _req.query.serviceId as string | undefined;
+  const active = _req.query.active === 'true';
+  const result = listMaintenanceWindows({ serviceId, active: active || undefined });
+  if (!result.ok) return res.status(500).json(result);
+  res.json(result);
+});
+
+router.get('/api/maintenance-windows/:id', (req, res) => {
+  const result = getMaintenanceWindow(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
+});
+
+router.post('/api/maintenance-windows', requireAuth, (req: Request, res: Response) => {
+  const parsed = CreateMaintenanceWindowSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: { code: 'VALIDATION', message: parsed.error.message } });
+  }
+
+  const result = createMaintenanceWindow(parsed.data);
+  if (!result.ok) {
+    const status = result.error.code === 'VALIDATION' ? 400 : 500;
+    return res.status(status).json(result);
+  }
+  res.status(201).json(result);
+});
+
+router.delete('/api/maintenance-windows/:id', requireAuth, (req: Request<{id: string}>, res: Response) => {
+  const result = deleteMaintenanceWindow(req.params.id);
+  if (!result.ok) {
+    const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+    return res.status(status).json(result);
+  }
+  res.json(result);
 });
 
 // ── Incidents ──

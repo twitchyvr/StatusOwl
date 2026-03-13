@@ -13,6 +13,7 @@ export type {
   Service,
   CreateService,
   ServiceGroup,
+  CreateServiceGroup,
   ServiceStatus,
   CheckResult,
   Incident,
@@ -21,15 +22,22 @@ export type {
   IncidentStatus,
   Webhook,
   UptimeSummary,
+  MaintenanceWindow,
+  CreateMaintenanceWindow,
+  BodyValidation,
 } from './contracts.js';
 
 export {
   ServiceSchema,
   CreateServiceSchema,
+  CreateServiceGroupSchema,
   ServiceGroupSchema,
   CheckResultSchema,
   IncidentSchema,
   IncidentUpdateSchema,
   WebhookSchema,
   WebhookEventType,
+  MaintenanceWindowSchema,
+  CreateMaintenanceWindowSchema,
+  BodyValidationSchema,
 } from './contracts.js';
