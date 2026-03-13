@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
 import { createService, getService, listServices, updateService, updateServiceStatus, deleteService } from '../src/storage/service-repo.js';
 import { getDb, closeDb } from '../src/storage/database.js';
-import type { CreateService, Service } from '../src/core/index.js';
+import type { CreateService } from '../src/core/index.js';
 
 describe('Service Repository', () => {
   let db: ReturnType<typeof getDb>;

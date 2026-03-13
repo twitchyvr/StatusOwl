@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getConfig, Config } from '../src/core/config.js';
+import { getConfig } from '../src/core/config.js';
 
 describe('Config', () => {
   // These tests verify the config module works correctly

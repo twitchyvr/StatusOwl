@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { getDb } from '../storage/database.js';
 import { ok, err, createChildLogger } from '../core/index.js';
 import type { Result, Webhook, WebhookEventType } from '../core/index.js';
-import { WebhookSchema, WebhookEventType as WebhookEventTypeSchema } from '../core/index.js';
+import { WebhookEventType as WebhookEventTypeSchema } from '../core/index.js';
 
 const log = createChildLogger('WebhookRepo');
 

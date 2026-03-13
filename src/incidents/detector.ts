@@ -17,7 +17,6 @@ import {
   getIncidentsByService,
   getIncidentById,
 } from './incident-repo.js';
-import { getService } from '../storage/service-repo.js';
 
 const log = createChildLogger('IncidentDetector');
 
@@ -109,7 +108,6 @@ function processServiceChecks(
     // Analyze check results
     const checks = recentChecks.map(rowToCheck);
     const failureCount = countConsecutiveFailures(checks);
-    const hasRecentFailure = checks.length > 0 && isFailure(checks[0].status);
     const hasRecentSuccess = checks.length > 0 && checks[0].status === SUCCESS_STATUS;
 
     // Rule 1: Create incident if 3+ consecutive failures and no open incident

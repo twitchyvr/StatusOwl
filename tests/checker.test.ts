@@ -4,7 +4,7 @@
  * Tests for HTTP health check functionality.
  */
 
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { checkService } from '../src/monitors/checker.js';
 import type { Service } from '../src/core/index.js';
 

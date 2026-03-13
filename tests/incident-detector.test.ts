@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
 import { detectIncidents, getOpenIncidentsForApi, getIncidentsForService, getIncident } from '../src/incidents/detector.js';
-import { createService, updateServiceStatus } from '../src/storage/service-repo.js';
+import { createService } from '../src/storage/service-repo.js';
 import { recordCheck } from '../src/storage/check-repo.js';
 import { getDb, closeDb } from '../src/storage/database.js';
 import type { ServiceStatus } from '../src/core/index.js';
