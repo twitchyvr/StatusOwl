@@ -13,10 +13,24 @@ vi.mock('../src/storage/index.js', () => ({
   createService: vi.fn(),
   getService: vi.fn(),
   listServices: vi.fn(),
+  listServicesPaginated: vi.fn(),
   updateService: vi.fn(),
   deleteService: vi.fn(),
   getRecentChecks: vi.fn(),
   getUptimeSummary: vi.fn(),
+  getDailyHistory: vi.fn(),
+  getLatestSslCheck: vi.fn(),
+  getSslHistory: vi.fn(),
+  createGroup: vi.fn(),
+  getGroup: vi.fn(),
+  listGroups: vi.fn(),
+  updateGroup: vi.fn(),
+  deleteGroup: vi.fn(),
+  addDependency: vi.fn(),
+  removeDependency: vi.fn(),
+  getDependenciesOf: vi.fn(),
+  getDependentsOn: vi.fn(),
+  getDownstreamServices: vi.fn(),
 }));
 
 vi.mock('../src/monitors/index.js', () => ({
@@ -38,6 +52,53 @@ vi.mock('../src/storage/database.js', () => ({
     })),
   })),
   closeDb: vi.fn(),
+}));
+
+vi.mock('../src/monitors/percentile-aggregator.js', () => ({
+  getPercentiles: vi.fn(),
+}));
+
+vi.mock('../src/maintenance/index.js', () => ({
+  createMaintenanceWindow: vi.fn(),
+  getMaintenanceWindow: vi.fn(),
+  listMaintenanceWindows: vi.fn(),
+  deleteMaintenanceWindow: vi.fn(),
+}));
+
+vi.mock('../src/alerts/index.js', () => ({
+  createAlertPolicy: vi.fn(),
+  getAlertPolicy: vi.fn(),
+  getAlertPolicyByService: vi.fn(),
+  listAlertPolicies: vi.fn(),
+  updateAlertPolicy: vi.fn(),
+  deleteAlertPolicy: vi.fn(),
+}));
+
+vi.mock('../src/auth/index.js', () => ({
+  registerClient: vi.fn(),
+  requestGrant: vi.fn(),
+  introspectToken: vi.fn(),
+  revokeToken: vi.fn(),
+  rotateToken: vi.fn(),
+}));
+
+vi.mock('../src/audit/index.js', () => ({
+  recordAudit: vi.fn(),
+  queryAuditLog: vi.fn(),
+}));
+
+vi.mock('../src/subscriptions/index.js', () => ({
+  createSubscription: vi.fn(),
+  confirmSubscription: vi.fn(),
+  unsubscribe: vi.fn(),
+  listSubscriptions: vi.fn(),
+  deleteSubscription: vi.fn(),
+}));
+
+vi.mock('../src/reports/index.js', () => ({
+  generateReport: vi.fn(),
+  getReport: vi.fn(),
+  listReports: vi.fn(),
 }));
 
 vi.mock('../src/api/auth.js', () => ({

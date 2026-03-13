@@ -5,6 +5,10 @@
 
 /* CSS Custom Properties - Light Theme (default) */
 :root {
+  /* Branding — overridden dynamically via /api/branding */
+  --brand-primary: #2563eb;
+  --brand-accent: #059669;
+
   --color-operational: #22c55e;
   --color-degraded: #eab308;
   --color-partial-outage: #f97316;
@@ -16,7 +20,7 @@
   --color-text-secondary: #64748b;
   --color-border: #e2e8f0;
   --color-shadow: rgba(0, 0, 0, 0.05);
-  --color-focus: #3b82f6;
+  --color-focus: var(--brand-primary);
 
   /* Incident status badge colors */
   --color-investigating: #facc15;
@@ -58,7 +62,7 @@
   --color-text-secondary: #94a3b8;
   --color-border: #334155;
   --color-shadow: rgba(0, 0, 0, 0.3);
-  --color-focus: #60a5fa;
+  --color-focus: var(--brand-primary);
 
   --color-operational: #4ade80;
   --color-degraded: #facc15;
@@ -156,6 +160,24 @@ button:focus-visible {
   font-weight: 700;
   color: var(--color-text-primary);
   letter-spacing: -0.02em;
+}
+
+.site-logo {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.site-logo img {
+  height: 32px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.site-description {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin-top: var(--spacing-xs);
 }
 
 /* Header Controls */

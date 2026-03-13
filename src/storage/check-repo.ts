@@ -11,16 +11,16 @@ import type { Result, CheckResult, ServiceStatus, UptimeSummary } from '../core/
 
 const log = createChildLogger('CheckRepo');
 
-export function recordCheck(serviceId: string, status: ServiceStatus, responseTime: number, statusCode: number | null, errorMessage: string | null): Result<CheckResult> {
+export function recordCheck(serviceId: string, status: ServiceStatus, responseTime: number, statusCode: number | null, errorMessage: string | null, regionId?: string): Result<CheckResult> {
   try {
     const db = getDb();
     const id = randomUUID();
     const now = new Date().toISOString();
 
     db.prepare(`
-      INSERT INTO check_results (id, service_id, status, response_time, status_code, error_message, checked_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, serviceId, status, responseTime, statusCode, errorMessage, now);
+      INSERT INTO check_results (id, service_id, status, response_time, status_code, error_message, checked_at, region_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, serviceId, status, responseTime, statusCode, errorMessage, now, regionId ?? 'default');
 
     return ok({ id, serviceId, status, responseTime, statusCode, errorMessage, checkedAt: now });
   } catch (e) {

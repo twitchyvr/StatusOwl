@@ -4,6 +4,22 @@ All notable changes to StatusOwl are documented here. This project follows [Sema
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-03-13
+
+### Added
+- **Audit Log** — Full audit trail for all mutation endpoints: service/group/incident/maintenance/alert policy/auth operations (#64)
+- **Service Dependencies** — Dependency graph with cycle detection, downstream cascade discovery, parent/child relationship management (#65)
+- **Custom Branding** — Configurable status page branding: logo URL, primary/accent colors, favicon, with `/api/branding` endpoint (#62)
+- **Incident Subscriptions** — Email subscription system with confirmation tokens, per-service or global subscriptions, unsubscribe flow (#63)
+- **Scheduled Reports** — Daily/weekly uptime report generation with background scheduler, per-service stats, overall uptime aggregation (#61)
+- **Multi-Region Monitoring** — Region-based health checks with regional latency tracking, default region seeding (#60)
+- API routes: `/api/audit-log`, `/api/branding`, `/api/subscriptions`, `/api/subscriptions/confirm/:token`, `/api/subscriptions/unsubscribe/:token`, `/api/reports`, `/api/reports/:id`, `/api/reports/generate`, `/api/services/:id/dependencies`, `/api/services/:id/dependents`, `/api/services/:id/downstream`, `/api/dependencies/:id`
+- Database migrations #6 (audit_log table), #7 (service_dependencies table), #8 (subscriptions table), #9 (uptime_reports table), #10 (monitoring_regions table + region_id on check_results)
+- Branding config env vars: `STATUSOWL_LOGO_URL`, `STATUSOWL_PRIMARY_COLOR`, `STATUSOWL_ACCENT_COLOR`, `STATUSOWL_FAVICON_URL`
+- Report scheduler: daily generation on startup + 24h interval, weekly on Mondays
+- Audit logging wired into all mutation routes (services, groups, incidents, maintenance, alert policies, auth)
+- 432 tests across 28 modules (73 new tests)
+
 ## [0.4.0] — 2026-03-13
 
 ### Added
